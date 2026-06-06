@@ -1,0 +1,50 @@
+"""Sensor platform for GrowAssistant Crop Steering."""
+
+from __future__ import annotations
+
+from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+from .const import DEFAULT_NAME, DOMAIN, NAME, VERSION
+
+_STATUS_SENSOR = SensorEntityDescription(
+    key="status",
+    translation_key="status",
+    icon="mdi:sprout",
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up GrowAssistant Crop Steering sensors for a config entry."""
+    async_add_entities([GrowAssistantStatusSensor(entry)])
+
+
+class GrowAssistantStatusSensor(SensorEntity):
+    """Status sensor for the GrowAssistant Crop Steering scaffold."""
+
+    entity_description = _STATUS_SENSOR
+    _attr_has_entity_name = True
+
+    def __init__(self, entry: ConfigEntry) -> None:
+        """Initialize the status sensor."""
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_status"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry.entry_id)},
+            "name": entry.data.get(CONF_NAME, DEFAULT_NAME),
+            "manufacturer": "GrowAssistant",
+            "model": "Crop Steering Scaffold",
+            "sw_version": VERSION,
+        }
+
+    @property
+    def native_value(self) -> str:
+        """Return the scaffold status."""
+        return "ready"

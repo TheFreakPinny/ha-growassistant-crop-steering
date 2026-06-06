@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GrowAssistant – Crop Steering einrichten",
+        "description": "Erstellt eine Platzhalterinstanz von GrowAssistant Crop Steering. Die Bewässerungslogik wird in einer späteren Version ergänzt.",
+        "data": {
+          "name": "Name"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "GrowAssistant – Crop Steering ist bereits eingerichtet."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "ready": "Bereit"
+        }
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Aktualisieren",
+      "description": "Fordert eine Platzhalter-Aktualisierung an. Die Bewässerungslogik ist in v0.1 noch nicht implementiert."
+    }
+  }
+}

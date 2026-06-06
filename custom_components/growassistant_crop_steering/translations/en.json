@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up GrowAssistant – Crop Steering",
+        "description": "Create a placeholder GrowAssistant Crop Steering instance. The irrigation engine will be added in a later release.",
+        "data": {
+          "name": "Name"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "GrowAssistant – Crop Steering is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "ready": "Ready"
+        }
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Request a scaffold refresh. The irrigation engine is not implemented in v0.1."
+    }
+  }
+}
