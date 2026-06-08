@@ -7,18 +7,19 @@ A Home Assistant custom integration for crop steering irrigation diagnostics and
 
 ## Current status
 
-**v0.1 is read-only and diagnostic only.**
+**v0.1 is focused on read-only diagnostics, plus optional helper services and an optional blueprint for users who intentionally enable external automation.**
 
-The integration reads existing Home Assistant helpers/entities and exposes diagnostic sensors for crop steering state. It does **not** control pumps yet, does **not** run an irrigation engine, and should not be treated as an autonomous irrigation controller in v0.1.
+The integration reads existing Home Assistant helpers/entities and exposes diagnostic sensors for crop steering state. Its core integration logic does **not** run a native irrigation engine and does **not** autonomously control pumps in v0.1. The included services only update configured helper entities or manually turn the pump switch off, and the optional blueprint is the only provided path that can turn a pump on when a user explicitly installs and configures it.
 
 ## Current v0.1 features
 
 - HACS-compatible Home Assistant custom integration.
 - UI config flow through **Settings → Devices & services**.
 - User selects existing Home Assistant helpers/entities during setup.
-- Diagnostic sensors for status, phase, soak countdowns, and block reason.
-- Read-only diagnostics only.
-- No pump control implemented yet.
+- Diagnostic sensors for status, phase, P1/P2 soak countdowns, and block reason.
+- Optional helper services for resetting cycle helpers, preparing P1 helper state, and manually stopping the configured pump switch.
+- Optional shot engine blueprint for YAML-based pump orchestration outside the integration.
+- No native integration-side pump control or autonomous irrigation engine implemented yet.
 
 ## Installation via HACS custom repository
 
@@ -211,13 +212,11 @@ Future pump control should always use a physical/electrical failsafe and Home As
 
 ## Roadmap
 
-- **v0.1 diagnostics**
-  - Read-only setup, diagnostic sensors, phase state, soak countdowns, and block reason diagnostics.
-- **v0.2 services / reset helpers**
-  - Basic service helpers for operational resets, P1 start preparation, and manual/safety pump stop workflows.
-- **v0.3 optional blueprint-based shot engine**
-  - Optional Home Assistant automation/blueprint approach for shot orchestration.
-- **v0.4 native Python irrigation engine**
+- **v0.1 initial release**
+  - Read-only diagnostic setup with status, phase, soak countdown, and block reason sensors.
+  - Optional helper services for reset, P1 start preparation, and manual/safety pump stop workflows.
+  - Optional Home Assistant automation blueprint for users who intentionally choose YAML-based shot orchestration.
+- **Future native Python irrigation engine**
   - Native integration-side irrigation engine with appropriate safeguards and controls.
 
 ## Development
