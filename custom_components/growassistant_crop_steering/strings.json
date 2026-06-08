@@ -1,0 +1,97 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up GrowAssistant – Crop Steering",
+        "description": "Select the existing Home Assistant helpers and entities GrowAssistant will use. Pump control is not implemented in v0.1.",
+        "data": {
+          "name": "Name",
+          "pump_switch": "Pump switch",
+          "led_day_sensor": "LED day binary sensor",
+          "vwc_sensor": "VWC sensor",
+          "drain_sensor": "Drain binary sensor",
+          "drain_tray_sensor": "Drain tray leak binary sensor",
+          "led_sunrise": "LED sunrise time",
+          "led_sunset": "LED sunset time",
+          "p1_mode": "P1 mode",
+          "p2_mode": "P2 mode",
+          "p0_transpiration_min": "P0 transpiration minutes",
+          "p1_duration_min": "P1 duration minutes",
+          "p1_interval_min": "P1 interval minutes",
+          "p1_shot_duration_s": "P1 shot duration seconds",
+          "p2_interval_min": "P2 interval minutes",
+          "p2_shot_duration_s": "P2 shot duration seconds",
+          "p2_shots": "P2 shots",
+          "p1_soak_min": "P1 soak minutes",
+          "p2_soak_min": "P2 soak minutes",
+          "p2_end_offset_min": "P2 end offset minutes",
+          "field_capacity_vwc": "Field capacity VWC",
+          "p1_start_vwc": "P1 start VWC",
+          "p2_vwc_drop": "P2 VWC drop",
+          "p2_ref_vwc": "P2 reference VWC",
+          "vwc_cap": "VWC cap",
+          "vwc_hyst": "VWC hysteresis",
+          "p1_active": "P1 active",
+          "p1_done": "P1 done",
+          "p1_window_opened_today": "P1 window opened today",
+          "p1_shots_done": "P1 shots done",
+          "p2_shots_done": "P2 shots done",
+          "last_shot": "Last shot time"
+        },
+        "data_description": {
+          "name": "Display name for this GrowAssistant instance.",
+          "pump_switch": "Switch entity for the irrigation pump. It is stored for future use only in v0.1.",
+          "led_day_sensor": "Binary sensor that indicates whether the grow light day period is active.",
+          "vwc_sensor": "Sensor entity that reports substrate volumetric water content.",
+          "drain_sensor": "Optional binary sensor that indicates irrigation drain/runoff activity.",
+          "drain_tray_sensor": "Optional binary sensor that indicates a drain tray leak or high-water condition.",
+          "led_sunrise": "Input datetime helper for the grow light sunrise/start time.",
+          "led_sunset": "Input datetime helper for the grow light sunset/end time.",
+          "p1_mode": "Input select helper that stores the P1 steering mode.",
+          "p2_mode": "Input select helper that stores the P2 steering mode.",
+          "p0_transpiration_min": "Input number helper for the minimum P0 transpiration duration in minutes.",
+          "p1_duration_min": "Input number helper for the P1 window duration in minutes.",
+          "p1_interval_min": "Optional input number helper for the P1 irrigation interval in minutes.",
+          "p1_shot_duration_s": "Input number helper for the P1 irrigation shot duration in seconds.",
+          "p2_interval_min": "Optional input number helper for the P2 irrigation interval in minutes.",
+          "p2_shot_duration_s": "Input number helper for the P2 irrigation shot duration in seconds.",
+          "p2_shots": "Input number helper for the target number of P2 irrigation shots.",
+          "p1_soak_min": "Input number helper for P1 soak time in minutes.",
+          "p2_soak_min": "Input number helper for P2 soak time in minutes.",
+          "p2_end_offset_min": "Input number helper for the P2 end offset before LED sunset in minutes.",
+          "field_capacity_vwc": "Input number helper for substrate field capacity VWC.",
+          "p1_start_vwc": "Input number helper for the VWC threshold that starts P1 behavior.",
+          "p2_vwc_drop": "Input number helper for the VWC drop target used during P2.",
+          "p2_ref_vwc": "Input number helper for the P2 reference VWC.",
+          "vwc_cap": "Optional input number helper for the maximum VWC cap.",
+          "vwc_hyst": "Optional input number helper for VWC hysteresis.",
+          "p1_active": "Input boolean helper that tracks whether P1 is currently active.",
+          "p1_done": "Input boolean helper that tracks whether P1 has completed for the day.",
+          "p1_window_opened_today": "Input boolean helper that tracks whether the P1 window opened today.",
+          "p1_shots_done": "Counter helper that tracks completed P1 shots.",
+          "p2_shots_done": "Counter helper that tracks completed P2 shots.",
+          "last_shot": "Input datetime helper for the last irrigation shot timestamp."
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "GrowAssistant – Crop Steering is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "ready": "Ready"
+        }
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Request a scaffold refresh. The irrigation engine is not implemented in v0.1."
+    }
+  }
+}
