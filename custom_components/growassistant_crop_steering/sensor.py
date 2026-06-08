@@ -9,6 +9,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
+    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -72,6 +73,7 @@ _P1_SOAK_REMAINING_SENSOR = SensorEntityDescription(
     translation_key="p1_soak_remaining",
     device_class=SensorDeviceClass.DURATION,
     native_unit_of_measurement=UnitOfTime.SECONDS,
+    state_class=SensorStateClass.MEASUREMENT,
     icon="mdi:timer-sand",
 )
 
@@ -80,6 +82,7 @@ _P2_SOAK_REMAINING_SENSOR = SensorEntityDescription(
     translation_key="p2_soak_remaining",
     device_class=SensorDeviceClass.DURATION,
     native_unit_of_measurement=UnitOfTime.SECONDS,
+    state_class=SensorStateClass.MEASUREMENT,
     icon="mdi:timer-sand",
 )
 
