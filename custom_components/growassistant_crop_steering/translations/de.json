@@ -7,7 +7,6 @@
         "data": {
           "name": "Name",
           "pump_switch": "Pumpenschalter oder Testhelfer",
-          "led_day_sensor": "LED-Tag-Binärsensor",
           "vwc_sensor": "VWC-Sensor",
           "drain_sensor": "Drainage-Binärsensor",
           "drain_tray_sensor": "Drainagewannen-Leck-Binärsensor",
@@ -41,7 +40,6 @@
         "data_description": {
           "name": "Anzeigename für diese GrowAssistant-Instanz.",
           "pump_switch": "Schalterentität für echte Bewässerungspumpen-Hardware oder ein input_boolean-Helfer für sichere Test-/Dummy-Pumpensimulation. Automatische Pumpensteuerung ist in v0.1 nicht implementiert.",
-          "led_day_sensor": "Binärsensor, der angibt, ob die Lichtphase der Pflanzenbeleuchtung aktiv ist.",
           "vwc_sensor": "Sensorentität, die den volumetrischen Wassergehalt des Substrats meldet.",
           "drain_sensor": "Optionaler Binärsensor, der Drainage- oder Abflussaktivität bei der Bewässerung anzeigt.",
           "drain_tray_sensor": "Optionaler Binärsensor, der ein Leck oder einen Hochwasserzustand in der Drainagewanne anzeigt.",

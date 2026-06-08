@@ -68,7 +68,8 @@ _DEFAULT_SOAK_SECONDS = 5 * 60
 
 _REQUIRED_BLOCK_REASON_KEYS = (
     CONF_VWC_SENSOR,
-    CONF_LED_DAY_SENSOR,
+    CONF_LED_SUNRISE,
+    CONF_LED_SUNSET,
     CONF_P1_MODE,
     CONF_P2_MODE,
     CONF_P1_ACTIVE,
@@ -281,12 +282,6 @@ def _calculate_phase(
     """Calculate the current crop steering phase and debug attributes."""
     missing_entities: list[str] = []
 
-    led_day = _get_bool_state(
-        hass,
-        entry.data.get(CONF_LED_DAY_SENSOR),
-        missing_entities,
-    )
-
     p0_s = _minutes_to_seconds(
         _get_float_state(
             hass,
@@ -315,10 +310,12 @@ def _calculate_phase(
         missing_entities,
     )
 
-    _get_float_state(
-        hass,
-        entry.data.get(CONF_P2_END_OFFSET_MIN),
-        missing_entities,
+    p2_end_offset_s = _minutes_to_seconds(
+        _get_float_state(
+            hass,
+            entry.data.get(CONF_P2_END_OFFSET_MIN),
+            missing_entities,
+        )
     )
 
     p1_mode = _get_text_state(
@@ -350,8 +347,9 @@ def _calculate_phase(
         missing_entities,
     )
 
-    since_on_s = None if timing is None else timing[0]
-    until_off_s = None if timing is None else timing[1]
+    led_day = None if timing is None else timing[0]
+    since_on_s = None if timing is None else timing[1]
+    until_off_s = None if timing is None else timing[2]
 
     p2_target_value = max(0, int(p2_target or 0))
     p2_done_value = max(0, int(p2_done or 0))
@@ -366,6 +364,7 @@ def _calculate_phase(
     debug_attributes = {
         "led_day": led_day,
         "since_on_s": since_on_s,
+        "until_off_s": until_off_s,
         "p0_s": p0_s,
         "p1_s": p1_s,
         "p2_target": p2_target_value,
@@ -682,7 +681,7 @@ def _deduplicate_missing_entities(
     """Return unique missing required entity identifiers."""
     configured_required = {
         entry.data.get(key) or key for key in _REQUIRED_BLOCK_REASON_KEYS
-    }
+    } | set(_REQUIRED_BLOCK_REASON_KEYS)
     deduplicated: list[str] = []
 
     for entity_id in missing_entities:
@@ -816,8 +815,8 @@ def _light_timing(
     sunrise_entity_id: str | None,
     sunset_entity_id: str | None,
     missing_entities: list[str],
-) -> tuple[int, int] | None:
-    """Return seconds since light-on and until light-off."""
+) -> tuple[bool, int, int] | None:
+    """Return calculated light state plus seconds since on and until off."""
     sunrise_s = _get_time_seconds(hass, sunrise_entity_id, missing_entities)
     sunset_s = _get_time_seconds(hass, sunset_entity_id, missing_entities)
 
@@ -828,15 +827,17 @@ def _light_timing(
     now_s = _seconds_since_midnight(now)
 
     if sunrise_s == sunset_s:
-        return 0, 24 * 60 * 60
+        return True, 0, 24 * 60 * 60
 
     if sunset_s > sunrise_s:
-        return now_s - sunrise_s, sunset_s - now_s
+        led_day = sunrise_s <= now_s < sunset_s
+        return led_day, now_s - sunrise_s, sunset_s - now_s
 
+    led_day = now_s >= sunrise_s or now_s < sunset_s
     if now_s >= sunrise_s:
-        return now_s - sunrise_s, sunset_s + 24 * 60 * 60 - now_s
+        return led_day, now_s - sunrise_s, sunset_s + 24 * 60 * 60 - now_s
 
-    return now_s + 24 * 60 * 60 - sunrise_s, sunset_s - now_s
+    return led_day, now_s + 24 * 60 * 60 - sunrise_s, sunset_s - now_s
 
 
 def _get_time_seconds(
