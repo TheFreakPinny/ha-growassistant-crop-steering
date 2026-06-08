@@ -7,7 +7,7 @@
         "data": {
           "name": "Name",
           "pump_switch": "Pumpenschalter oder Testhelfer",
-          "vwc_sensor": "VWC-Sensor",
+          "vwc_sensor": "VWC-Sensor(en)",
           "drain_sensor": "Drainage-Binärsensor",
           "drain_tray_sensor": "Drainagewannen-Leck-Binärsensor",
           "led_sunrise": "LED-Sonnenaufgangszeit",
@@ -40,7 +40,7 @@
         "data_description": {
           "name": "Anzeigename für diese GrowAssistant-Instanz.",
           "pump_switch": "Schalterentität für echte Bewässerungspumpen-Hardware oder ein input_boolean-Helfer für sichere Test-/Dummy-Pumpensimulation. Automatische Pumpensteuerung ist in v0.1 nicht implementiert.",
-          "vwc_sensor": "Sensorentität, die den volumetrischen Wassergehalt des Substrats meldet.",
+          "vwc_sensor": "Du kannst einen oder mehrere VWC-Sensoren auswählen. Mehrere gültige Werte werden automatisch gemittelt.",
           "drain_sensor": "Optionaler Binärsensor, der Drainage- oder Abflussaktivität bei der Bewässerung anzeigt.",
           "drain_tray_sensor": "Optionaler Binärsensor, der ein Leck oder einen Hochwasserzustand in der Drainagewanne anzeigt.",
           "led_sunrise": "Input-datetime-Helfer für die Sonnenaufgangs- oder Startzeit der Pflanzenbeleuchtung. Erstelle diesen Helfer als Nur Uhrzeit; Datum und Uhrzeit kann funktionieren, wird aber nicht empfohlen. Beispiel Lichtstart: 19:00:00. Zeitpläne über Mitternacht werden unterstützt.",

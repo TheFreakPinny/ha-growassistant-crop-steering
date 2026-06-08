@@ -126,6 +126,49 @@ _BLOCK_REASON_SENSOR = SensorEntityDescription(
 _UNAVAILABLE_STATES = {None, "", STATE_UNAVAILABLE, STATE_UNKNOWN}
 
 
+def _normalize_vwc_sensors(config_value: Any) -> list[str]:
+    """Return configured VWC sensors as a list of entity IDs."""
+    if isinstance(config_value, str):
+        return [config_value] if config_value else []
+
+    if isinstance(config_value, list):
+        return [entity_id for entity_id in config_value if isinstance(entity_id, str)]
+
+    return []
+
+
+def _get_average_vwc_state(
+    hass: HomeAssistant,
+    config_value: Any,
+) -> dict[str, Any]:
+    """Return averaged VWC state and diagnostics for configured sensors."""
+    vwc_sensors = _normalize_vwc_sensors(config_value)
+    vwc_values: dict[str, float] = {}
+
+    for entity_id in vwc_sensors:
+        state = hass.states.get(entity_id)
+        if state is None or state.state in _UNAVAILABLE_STATES:
+            continue
+
+        try:
+            vwc_values[entity_id] = float(state.state)
+        except (TypeError, ValueError):
+            continue
+
+    vwc_valid_count = len(vwc_values)
+    vwc_average = (
+        sum(vwc_values.values()) / vwc_valid_count if vwc_valid_count else None
+    )
+
+    return {
+        "vwc": vwc_average,
+        "vwc_sensors": vwc_sensors,
+        "vwc_values": vwc_values,
+        "vwc_valid_count": vwc_valid_count,
+        "vwc_average": vwc_average,
+    }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -457,11 +500,8 @@ def _calculate_block_reason(
     missing_entities = list(phase_attributes.get("missing_entities", []))
     _collect_missing_required_entities(hass, entry, missing_entities)
 
-    vwc = _get_float_state(
-        hass,
-        entry.data.get(CONF_VWC_SENSOR),
-        missing_entities,
-    )
+    vwc_state = _get_average_vwc_state(hass, entry.data.get(CONF_VWC_SENSOR))
+    vwc = vwc_state["vwc"]
     p1_mode = _get_text_state(
         hass,
         entry.data.get(CONF_P1_MODE),
@@ -543,6 +583,10 @@ def _calculate_block_reason(
     attributes = {
         "phase": phase,
         "vwc": vwc,
+        "vwc_sensors": vwc_state["vwc_sensors"],
+        "vwc_values": vwc_state["vwc_values"],
+        "vwc_valid_count": vwc_state["vwc_valid_count"],
+        "vwc_average": vwc_state["vwc_average"],
         "p1_mode": p1_mode,
         "p2_mode": p2_mode,
         "p1_start_vwc": p1_start_vwc,
@@ -665,6 +709,17 @@ def _collect_missing_required_entities(
     """Append missing required block reason entities before detailed reads."""
     for key in _REQUIRED_BLOCK_REASON_KEYS:
         entity_id = entry.data.get(key)
+        if key == CONF_VWC_SENSOR:
+            vwc_sensors = _normalize_vwc_sensors(entity_id)
+            if not vwc_sensors:
+                missing_entities.append(key)
+                continue
+
+            vwc_state = _get_average_vwc_state(hass, entity_id)
+            if vwc_state["vwc_valid_count"] == 0:
+                missing_entities.extend(vwc_sensors)
+            continue
+
         if entity_id is None:
             missing_entities.append(key)
             continue
@@ -674,14 +729,28 @@ def _collect_missing_required_entities(
             missing_entities.append(entity_id)
 
 
+def _configured_required_entities(entry: ConfigEntry) -> set[str]:
+    """Return configured required entity identifiers, flattening list values."""
+    configured_required = set(_REQUIRED_BLOCK_REASON_KEYS)
+
+    for key in _REQUIRED_BLOCK_REASON_KEYS:
+        value = entry.data.get(key)
+        if key == CONF_VWC_SENSOR:
+            configured_required.update(_normalize_vwc_sensors(value))
+        elif isinstance(value, str) and value:
+            configured_required.add(value)
+        elif value is None:
+            configured_required.add(key)
+
+    return configured_required
+
+
 def _deduplicate_missing_entities(
     missing_entities: list[str],
     entry: ConfigEntry,
 ) -> list[str]:
     """Return unique missing required entity identifiers."""
-    configured_required = {
-        entry.data.get(key) or key for key in _REQUIRED_BLOCK_REASON_KEYS
-    } | set(_REQUIRED_BLOCK_REASON_KEYS)
+    configured_required = _configured_required_entities(entry)
     deduplicated: list[str] = []
 
     for entity_id in missing_entities:
