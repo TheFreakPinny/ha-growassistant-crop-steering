@@ -1,0 +1,247 @@
+blueprint:
+  name: GrowAssistant Crop Steering Shot Engine (Optional)
+  description: >-
+    Optional GrowAssistant crop steering shot-engine automation for users who
+    want Home Assistant YAML-based pump control while native Python pump control
+    is not implemented yet.
+
+    Safety warning: this blueprint controls a real pump switch. Use it only if
+    you understand the risks of flooding, pump damage, crop damage, and
+    electrical hazards. Home Assistant automations can fail, restart, or be
+    delayed. You are responsible for validating every entity, duration, and
+    condition before enabling the automation.
+
+    Require an independent physical/electrical failsafe such as a float switch,
+    leak detector cutoff, timer relay, fused circuit, or other appropriate
+    hardware. Do not rely on this blueprint, Home Assistant, or software logic
+    alone as the only protection.
+
+    The automation is intentionally conservative: it does nothing while the pump
+    is already on, only fires in the P1/P2 phases exposed by the integration,
+    requires soak countdowns to be zero, and schedules both a normal pump-off and
+    a delayed failsafe pump-off.
+  domain: automation
+  input:
+    pump_switch:
+      name: Pump switch
+      description: Switch entity that powers the irrigation pump.
+      selector:
+        entity:
+          domain: switch
+    phase_sensor:
+      name: Phase sensor
+      description: GrowAssistant Phase diagnostic sensor.
+      selector:
+        entity:
+          domain: sensor
+    block_reason_sensor:
+      name: Block reason sensor (optional)
+      description: >-
+        Optional GrowAssistant Block Reason diagnostic sensor. This blueprint
+        does not make decisions from the text value; select it for traceability
+        and future edits if desired.
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+    p1_soak_remaining_sensor:
+      name: P1 soak remaining sensor
+      description: GrowAssistant P1 Soak Remaining diagnostic sensor, in seconds.
+      selector:
+        entity:
+          domain: sensor
+    p2_soak_remaining_sensor:
+      name: P2 soak remaining sensor
+      description: GrowAssistant P2 Soak Remaining diagnostic sensor, in seconds.
+      selector:
+        entity:
+          domain: sensor
+    p1_shot_duration_s:
+      name: P1 shot duration seconds
+      description: Input number containing the P1 pump runtime in seconds.
+      selector:
+        entity:
+          domain: input_number
+    p2_shot_duration_s:
+      name: P2 shot duration seconds
+      description: Input number containing the P2 pump runtime in seconds.
+      selector:
+        entity:
+          domain: input_number
+    p1_active_boolean:
+      name: P1 active boolean
+      description: Input boolean that must be on before P1 shots are allowed.
+      selector:
+        entity:
+          domain: input_boolean
+    p1_done_boolean:
+      name: P1 done boolean
+      description: Input boolean that must be off before P1 shots are allowed.
+      selector:
+        entity:
+          domain: input_boolean
+    p1_shots_done_counter:
+      name: P1 shots done counter
+      description: Counter incremented after each completed P1 shot.
+      selector:
+        entity:
+          domain: counter
+    p2_shots_done_counter:
+      name: P2 shots done counter
+      description: Counter incremented after each completed P2 shot.
+      selector:
+        entity:
+          domain: counter
+    p2_shots_number:
+      name: P2 shots number
+      description: Input number containing the target number of P2 shots.
+      selector:
+        entity:
+          domain: input_number
+    p2_end_offset_minutes:
+      name: P2 end offset minutes (optional)
+      description: >-
+        Optional helper retained for transparency with the integration setup.
+        The blueprint relies on the Phase sensor for P2 availability and does
+        not directly evaluate this value.
+      default: ""
+      selector:
+        entity:
+          domain: input_number
+    drain_tray_sensor:
+      name: Drain tray sensor (optional)
+      description: >-
+        Optional binary sensor for a drain tray, leak, or high-water condition.
+        When configured, P1 shots are blocked while this sensor is on/wet.
+      default: ""
+      selector:
+        entity:
+          domain: binary_sensor
+    failsafe_extra_seconds:
+      name: Failsafe extra seconds
+      description: Additional seconds after shot duration before a second pump-off command is sent.
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 300
+          unit_of_measurement: seconds
+          mode: box
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  - platform: time_pattern
+    seconds: "/10"
+  - platform: state
+    entity_id: !input phase_sensor
+  - platform: state
+    entity_id: !input p1_soak_remaining_sensor
+  - platform: state
+    entity_id: !input p2_soak_remaining_sensor
+  - platform: state
+    entity_id: !input pump_switch
+  - platform: state
+    entity_id: !input p1_active_boolean
+  - platform: state
+    entity_id: !input p1_done_boolean
+  - platform: state
+    entity_id: !input p1_shots_done_counter
+  - platform: state
+    entity_id: !input p2_shots_done_counter
+  - platform: state
+    entity_id: !input p2_shots_number
+
+variables:
+  pump_switch_entity: !input pump_switch
+  phase_sensor_entity: !input phase_sensor
+  block_reason_sensor_entity: !input block_reason_sensor
+  p1_soak_remaining_entity: !input p1_soak_remaining_sensor
+  p2_soak_remaining_entity: !input p2_soak_remaining_sensor
+  p1_shot_duration_entity: !input p1_shot_duration_s
+  p2_shot_duration_entity: !input p2_shot_duration_s
+  p1_active_entity: !input p1_active_boolean
+  p1_done_entity: !input p1_done_boolean
+  p1_shots_done_entity: !input p1_shots_done_counter
+  p2_shots_done_entity: !input p2_shots_done_counter
+  p2_shots_number_entity: !input p2_shots_number
+  p2_end_offset_minutes_entity: !input p2_end_offset_minutes
+  drain_tray_entity: !input drain_tray_sensor
+  failsafe_extra_seconds_value: !input failsafe_extra_seconds
+
+condition:
+  - condition: template
+    value_template: "{{ is_state(pump_switch_entity, 'off') }}"
+
+action:
+  - choose:
+      - alias: "Run a P1 morning shot"
+        conditions:
+          - condition: template
+            value_template: "{{ is_state(phase_sensor_entity, 'p1_morning') }}"
+          - condition: template
+            value_template: "{{ states(p1_soak_remaining_entity) | float(999999) <= 0 }}"
+          - condition: template
+            value_template: "{{ is_state(p1_active_entity, 'on') }}"
+          - condition: template
+            value_template: "{{ is_state(p1_done_entity, 'off') }}"
+          - condition: template
+            value_template: >-
+              {{ drain_tray_entity in ['', none]
+                 or not is_state(drain_tray_entity, 'on') }}
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input pump_switch
+          - parallel:
+              - sequence:
+                  - delay:
+                      seconds: "{{ [states(p1_shot_duration_entity) | float(0), 0] | max }}"
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input pump_switch
+                  - service: counter.increment
+                    target:
+                      entity_id: !input p1_shots_done_counter
+              - sequence:
+                  - delay:
+                      seconds: >-
+                        {{ ([states(p1_shot_duration_entity) | float(0), 0] | max)
+                           + ([failsafe_extra_seconds_value | float(10), 0] | max) }}
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input pump_switch
+
+      - alias: "Run a P2 midday shot"
+        conditions:
+          - condition: template
+            value_template: "{{ is_state(phase_sensor_entity, 'p2_midday') }}"
+          - condition: template
+            value_template: "{{ states(p2_soak_remaining_entity) | float(999999) <= 0 }}"
+          - condition: template
+            value_template: "{{ states(p2_shots_done_entity) | int(0) < states(p2_shots_number_entity) | int(0) }}"
+          - condition: template
+            value_template: "{{ states(p2_shots_number_entity) | int(0) > 0 }}"
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input pump_switch
+          - parallel:
+              - sequence:
+                  - delay:
+                      seconds: "{{ [states(p2_shot_duration_entity) | float(0), 0] | max }}"
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input pump_switch
+                  - service: counter.increment
+                    target:
+                      entity_id: !input p2_shots_done_counter
+              - sequence:
+                  - delay:
+                      seconds: >-
+                        {{ ([states(p2_shot_duration_entity) | float(0), 0] | max)
+                           + ([failsafe_extra_seconds_value | float(10), 0] | max) }}
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input pump_switch

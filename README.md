@@ -168,6 +168,30 @@ This service does **not** turn on the pump.
 
 Turns off only the configured pump switch. This is an explicit safety/manual stop service and does not modify cycle state helpers.
 
+## Optional automation blueprint
+
+This repository includes an optional Home Assistant automation blueprint for users who want YAML-based pump orchestration before native Python pump control is implemented:
+
+```text
+blueprints/automation/growassistant_crop_steering/shot_engine.yaml
+```
+
+The blueprint can run conservative P1/P2 shots from the integration's diagnostic sensors and your existing helpers. It watches the **Phase**, **P1 Soak Remaining**, and **P2 Soak Remaining** sensors, checks the configured P1/P2 helper state, turns the selected pump switch on for the configured shot duration, increments the matching shot counter, and sends a second delayed pump-off command as a failsafe.
+
+Native Python pump control is **not implemented yet**. The blueprint is optional and is provided only for users who intentionally choose to build a Home Assistant automation around the current diagnostic sensors and helper services. You remain responsible for confirming the selected entities, shot durations, soak timing, and counter behavior in your own Home Assistant instance.
+
+Because this blueprint can control real irrigation hardware, you must provide an independent physical/electrical failsafe such as an appropriate float switch, leak detector cutoff, timer relay, fused circuit, or other hardware protection. Do not rely on Home Assistant, this integration, the blueprint, or software logic alone to prevent flooding, pump damage, crop damage, or electrical hazards.
+
+### Installing the blueprint manually
+
+Copy the blueprint file into your Home Assistant configuration directory at the same relative path:
+
+```text
+blueprints/automation/growassistant_crop_steering/shot_engine.yaml
+```
+
+Then reload automations/blueprints or restart Home Assistant, create an automation from the blueprint, and review every input before enabling it.
+
 ## Phase states
 
 The phase sensor can report these states:
