@@ -48,8 +48,8 @@ from .const import (
     DOMAIN,
 )
 
-_REQUIRED_ENTITY_FIELDS: tuple[tuple[str, str], ...] = (
-    (CONF_PUMP_SWITCH, "switch"),
+_REQUIRED_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
+    (CONF_PUMP_SWITCH, ["switch", "input_boolean"]),
     (CONF_LED_DAY_SENSOR, "binary_sensor"),
     (CONF_VWC_SENSOR, "sensor"),
     (CONF_LED_SUNRISE, "input_datetime"),
@@ -76,7 +76,7 @@ _REQUIRED_ENTITY_FIELDS: tuple[tuple[str, str], ...] = (
     (CONF_LAST_SHOT, "input_datetime"),
 )
 
-_OPTIONAL_ENTITY_FIELDS: tuple[tuple[str, str], ...] = (
+_OPTIONAL_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
     (CONF_DRAIN_SENSOR, "binary_sensor"),
     (CONF_DRAIN_TRAY_SENSOR, "binary_sensor"),
     (CONF_VWC_CAP, "input_number"),
@@ -86,8 +86,8 @@ _OPTIONAL_ENTITY_FIELDS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _entity_selector(domain: str) -> selector.EntitySelector:
-    """Return an entity selector constrained to a Home Assistant domain."""
+def _entity_selector(domain: str | list[str]) -> selector.EntitySelector:
+    """Return an entity selector constrained to one or more Home Assistant domains."""
     return selector.EntitySelector(selector.EntitySelectorConfig(domain=domain))
 
 

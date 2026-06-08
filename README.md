@@ -9,7 +9,7 @@ A Home Assistant custom integration for crop steering irrigation diagnostics and
 
 **v0.1 is focused on read-only diagnostics, plus optional helper services and an optional blueprint for users who intentionally enable external automation.**
 
-The integration reads existing Home Assistant helpers/entities and exposes diagnostic sensors for crop steering state. Its core integration logic does **not** run a native irrigation engine and does **not** autonomously control pumps in v0.1. The included services only update configured helper entities or manually turn the pump switch off, and the optional blueprint is the only provided path that can turn a pump on when a user explicitly installs and configures it.
+The integration reads existing Home Assistant helpers/entities and exposes diagnostic sensors for crop steering state. Its core integration logic does **not** run a native irrigation engine and does **not** autonomously control pumps in v0.1. The included services only update configured helper entities or manually turn the configured pump entity off, and the optional blueprint is the only provided path that can turn a pump on when a user explicitly installs and configures it.
 
 ## Current v0.1 features
 
@@ -17,7 +17,7 @@ The integration reads existing Home Assistant helpers/entities and exposes diagn
 - UI config flow through **Settings → Devices & services**.
 - User selects existing Home Assistant helpers/entities during setup.
 - Diagnostic sensors for status, phase, P1/P2 soak countdowns, and block reason.
-- Optional helper services for resetting cycle helpers, preparing P1 helper state, and manually stopping the configured pump switch.
+- Optional helper services for resetting cycle helpers, preparing P1 helper state, and manually stopping the configured pump entity.
 - Optional shot engine blueprint for YAML-based pump orchestration outside the integration.
 - No native integration-side pump control or autonomous irrigation engine implemented yet.
 
@@ -55,7 +55,9 @@ GrowAssistant – Crop Steering v0.1 does not create or manage the irrigation he
 
 ### Required
 
-- **Pump switch** (`switch`)
+- **Pump switch or test helper** (`switch` or `input_boolean`)
+  - Use a `switch` entity for real irrigation pump hardware.
+  - Use an `input_boolean` helper for safe testing or dummy pump simulation without energizing real hardware.
   - Used only by the `growassistant_crop_steering.stop_pump` manual/safety service in v0.1.
   - Automatic pump control is not implemented yet.
 - **LED day binary sensor** (`binary_sensor`)
@@ -151,7 +153,7 @@ Resets daily/cycle helper state for the configured integration entry:
 - Resets the configured **P2 shots done** counter.
 - Sets the configured **P2 reference VWC** input number to `0` when configured.
 
-This service does **not** touch the pump switch.
+This service does **not** touch the configured pump switch or input_boolean test helper.
 
 ### `growassistant_crop_steering.start_p1`
 
@@ -167,7 +169,7 @@ This service does **not** turn on the pump.
 
 ### `growassistant_crop_steering.stop_pump`
 
-Turns off only the configured pump switch. This is an explicit safety/manual stop service and does not modify cycle state helpers.
+Turns off only the configured pump switch or input_boolean test helper. Use a `switch` for real pump hardware and an `input_boolean` helper for safe test/dummy pump simulation. This is an explicit safety/manual stop service and does not modify cycle state helpers.
 
 ## Optional automation blueprint
 
@@ -206,7 +208,7 @@ The phase sensor can report these states:
 
 ## Safety warning
 
-This integration is intended for irrigation diagnostics and basic helper services. Full automatic pump control is not implemented in v0.1; the only pump-facing service is the explicit manual/safety `growassistant_crop_steering.stop_pump` service.
+This integration is intended for irrigation diagnostics and basic helper services. Full automatic pump control is not implemented in v0.1; the only pump-facing service is the explicit manual/safety `growassistant_crop_steering.stop_pump` service, which turns off the configured `switch` or `input_boolean` test helper.
 
 Future pump control should always use a physical/electrical failsafe and Home Assistant failsafe automation. Do not rely on Home Assistant, this integration, or software logic alone to prevent flooding, pump damage, crop damage, or electrical hazards.
 

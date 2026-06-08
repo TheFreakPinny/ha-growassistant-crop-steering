@@ -6,7 +6,7 @@
         "description": "Select the existing Home Assistant helpers and entities GrowAssistant will use. Pump control is not implemented in v0.1.",
         "data": {
           "name": "Name",
-          "pump_switch": "Pump switch",
+          "pump_switch": "Pump switch or test helper",
           "led_day_sensor": "LED day binary sensor",
           "vwc_sensor": "VWC sensor",
           "drain_sensor": "Drain binary sensor",
@@ -40,7 +40,7 @@
         },
         "data_description": {
           "name": "Display name for this GrowAssistant instance.",
-          "pump_switch": "Switch entity for the irrigation pump. It is stored for future use only in v0.1.",
+          "pump_switch": "Switch entity for real irrigation pump hardware, or an input_boolean helper for safe test/dummy pump simulation. Automatic pump control is not implemented in v0.1.",
           "led_day_sensor": "Binary sensor that indicates whether the grow light day period is active.",
           "vwc_sensor": "Sensor entity that reports substrate volumetric water content.",
           "drain_sensor": "Optional binary sensor that indicates irrigation drain/runoff activity.",
@@ -111,7 +111,7 @@
   "services": {
     "reset_cycle": {
       "name": "Reset cycle",
-      "description": "Reset daily/cycle state helpers without touching the pump switch."
+      "description": "Reset daily/cycle state helpers without touching the configured pump switch or input_boolean test helper."
     },
     "start_p1": {
       "name": "Start P1",
@@ -119,7 +119,7 @@
     },
     "stop_pump": {
       "name": "Stop pump",
-      "description": "Turn off only the configured pump switch as an explicit manual/safety stop."
+      "description": "Turn off only the configured pump switch or input_boolean test helper as an explicit manual/safety stop."
     }
   }
 }
