@@ -11,11 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    CONF_DRAIN_SENSOR,
-    CONF_DRAIN_TRAY_SENSOR,
-    CONF_LED_DAY_SENSOR,
-    CONF_PUMP_SWITCH,
-    CONF_VWC_SENSOR,
+    CONFIG_ENTITY_KEYS,
     DEFAULT_NAME,
     DOMAIN,
     VERSION,
@@ -63,10 +59,4 @@ class GrowAssistantStatusSensor(SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return selected Home Assistant entities for the scaffold."""
-        return {
-            CONF_PUMP_SWITCH: self._entry.data.get(CONF_PUMP_SWITCH),
-            CONF_LED_DAY_SENSOR: self._entry.data.get(CONF_LED_DAY_SENSOR),
-            CONF_VWC_SENSOR: self._entry.data.get(CONF_VWC_SENSOR),
-            CONF_DRAIN_SENSOR: self._entry.data.get(CONF_DRAIN_SENSOR),
-            CONF_DRAIN_TRAY_SENSOR: self._entry.data.get(CONF_DRAIN_TRAY_SENSOR),
-        }
+        return {key: self._entry.data.get(key) for key in CONFIG_ENTITY_KEYS}
