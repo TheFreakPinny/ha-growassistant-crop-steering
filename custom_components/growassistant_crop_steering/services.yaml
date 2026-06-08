@@ -2,7 +2,7 @@ reset_cycle:
   name: Reset cycle
   description: >-
     Reset daily/cycle state helpers for the configured GrowAssistant crop
-    steering entry without touching the pump switch.
+    steering entry without touching the configured pump switch or input_boolean test helper.
 
 start_p1:
   name: Start P1
@@ -14,4 +14,4 @@ start_p1:
 stop_pump:
   name: Stop pump
   description: >-
-    Turn off only the configured pump switch as an explicit manual/safety stop.
+    Turn off only the configured pump switch or input_boolean test helper as an explicit manual/safety stop.

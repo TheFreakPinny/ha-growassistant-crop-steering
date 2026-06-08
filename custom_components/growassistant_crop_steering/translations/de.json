@@ -6,7 +6,7 @@
         "description": "Wähle die vorhandenen Home-Assistant-Helfer und Entitäten aus, die GrowAssistant verwenden soll. Die Pumpensteuerung ist in v0.1 noch nicht implementiert.",
         "data": {
           "name": "Name",
-          "pump_switch": "Pumpenschalter",
+          "pump_switch": "Pumpenschalter oder Testhelfer",
           "led_day_sensor": "LED-Tag-Binärsensor",
           "vwc_sensor": "VWC-Sensor",
           "drain_sensor": "Drainage-Binärsensor",
@@ -40,7 +40,7 @@
         },
         "data_description": {
           "name": "Anzeigename für diese GrowAssistant-Instanz.",
-          "pump_switch": "Schalterentität für die Bewässerungspumpe. Sie wird in v0.1 nur für zukünftige Verwendung gespeichert.",
+          "pump_switch": "Schalterentität für echte Bewässerungspumpen-Hardware oder ein input_boolean-Helfer für sichere Test-/Dummy-Pumpensimulation. Automatische Pumpensteuerung ist in v0.1 nicht implementiert.",
           "led_day_sensor": "Binärsensor, der angibt, ob die Lichtphase der Pflanzenbeleuchtung aktiv ist.",
           "vwc_sensor": "Sensorentität, die den volumetrischen Wassergehalt des Substrats meldet.",
           "drain_sensor": "Optionaler Binärsensor, der Drainage- oder Abflussaktivität bei der Bewässerung anzeigt.",
@@ -111,7 +111,7 @@
   "services": {
     "reset_cycle": {
       "name": "Zyklus zurücksetzen",
-      "description": "Setzt die täglichen Zyklus-Helfer zurück, ohne den Pumpenschalter zu berühren."
+      "description": "Setzt Tages-/Zyklus-Helfer zurück, ohne den konfigurierten Pumpenschalter oder input_boolean-Testhelfer zu berühren."
     },
     "start_p1": {
       "name": "P1 starten",
@@ -119,7 +119,7 @@
     },
     "stop_pump": {
       "name": "Pumpe stoppen",
-      "description": "Schaltet nur den konfigurierten Pumpenschalter als expliziten manuellen/Sicherheitsstopp aus."
+      "description": "Schaltet nur den konfigurierten Pumpenschalter oder input_boolean-Testhelfer als expliziten manuellen/Sicherheitsstopp aus."
     }
   }
 }

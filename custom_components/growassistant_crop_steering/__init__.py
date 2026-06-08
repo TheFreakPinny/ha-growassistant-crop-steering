@@ -35,7 +35,7 @@ DOMAIN_COUNTER = "counter"
 DOMAIN_INPUT_BOOLEAN = "input_boolean"
 DOMAIN_INPUT_DATETIME = "input_datetime"
 DOMAIN_INPUT_NUMBER = "input_number"
-DOMAIN_SWITCH = "switch"
+DOMAIN_HOMEASSISTANT = "homeassistant"
 
 SERVICE_COUNTER_RESET = "reset"
 SERVICE_SET_DATETIME = "set_datetime"
@@ -63,7 +63,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             await _start_p1_for_entry(hass, entry)
 
     async def _handle_stop_pump(call: ServiceCall) -> None:
-        """Turn off the configured pump switch."""
+        """Turn off the configured pump switch or input_boolean helper."""
         _LOGGER.info("GrowAssistant Crop Steering stop_pump service requested")
         for entry in _entries_for_service(hass, SERVICE_STOP_PUMP):
             await _stop_pump_for_entry(hass, entry)
@@ -150,9 +150,9 @@ async def _start_p1_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def _stop_pump_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Turn off the configured pump switch for one config entry."""
+    """Turn off the configured pump switch or input_boolean for one config entry."""
     await _call_helper_service(
-        hass, entry, CONF_PUMP_SWITCH, DOMAIN_SWITCH, SERVICE_TURN_OFF
+        hass, entry, CONF_PUMP_SWITCH, DOMAIN_HOMEASSISTANT, SERVICE_TURN_OFF
     )
     _LOGGER.info(
         "GrowAssistant Crop Steering stop_pump completed for config entry %s",
