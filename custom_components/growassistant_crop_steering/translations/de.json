@@ -102,6 +102,9 @@
       },
       "p2_soak_remaining": {
         "name": "Verbleibender P2-Soak"
+      },
+      "block_reason": {
+        "name": "Blockierungsgrund"
       }
     }
   },
