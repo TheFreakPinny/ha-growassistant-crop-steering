@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DEFAULT_NAME, DOMAIN, NAME, VERSION
+from .const import (
+    CONF_DRAIN_SENSOR,
+    CONF_DRAIN_TRAY_SENSOR,
+    CONF_LED_DAY_SENSOR,
+    CONF_PUMP_SWITCH,
+    CONF_VWC_SENSOR,
+    DEFAULT_NAME,
+    DOMAIN,
+    VERSION,
+)
 
 _STATUS_SENSOR = SensorEntityDescription(
     key="status",
@@ -48,3 +59,14 @@ class GrowAssistantStatusSensor(SensorEntity):
     def native_value(self) -> str:
         """Return the scaffold status."""
         return "ready"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return selected Home Assistant entities for the scaffold."""
+        return {
+            CONF_PUMP_SWITCH: self._entry.data.get(CONF_PUMP_SWITCH),
+            CONF_LED_DAY_SENSOR: self._entry.data.get(CONF_LED_DAY_SENSOR),
+            CONF_VWC_SENSOR: self._entry.data.get(CONF_VWC_SENSOR),
+            CONF_DRAIN_SENSOR: self._entry.data.get(CONF_DRAIN_SENSOR),
+            CONF_DRAIN_TRAY_SENSOR: self._entry.data.get(CONF_DRAIN_TRAY_SENSOR),
+        }
