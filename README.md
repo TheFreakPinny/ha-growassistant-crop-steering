@@ -63,11 +63,14 @@ GrowAssistant – Crop Steering v0.1 does not create or manage the irrigation he
 - **VWC sensor** (`sensor`)
   - Reports substrate volumetric water content.
 - **LED sunrise input_datetime** (`input_datetime`)
-  - Grow light start time.
+  - Grow light start time. Create this helper as **Time only**.
+  - Example LED sunrise/light start value: `19:00:00`.
 - **LED sunset input_datetime** (`input_datetime`)
-  - Grow light end time.
+  - Grow light end time. Create this helper as **Time only**.
+  - Example LED sunset/light end value: `07:00:00`.
+  - `Date and time` helpers may work, but they are not recommended for LED sunrise/sunset because only the time-of-day schedule is expected.
   - The integration calculates LED day/night state, seconds since light-on, and seconds until light-off from the configured sunrise/sunset helpers. No external LED day binary sensor is required.
-  - Fixed schedules that cross midnight, such as 19:00 to 07:00, are supported.
+  - Fixed schedules that cross midnight, such as `19:00:00` to `07:00:00`, are supported.
 - **P1 mode input_select** (`input_select`)
   - Stores the P1 steering mode.
 - **P2 mode input_select** (`input_select`)
