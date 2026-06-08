@@ -55,8 +55,8 @@ GrowAssistant – Crop Steering v0.1 does not create or manage the irrigation he
 ### Required
 
 - **Pump switch** (`switch`)
-  - Stored for future use only in v0.1.
-  - Pump control is not implemented yet.
+  - Used only by the `growassistant_crop_steering.stop_pump` manual/safety service in v0.1.
+  - Automatic pump control is not implemented yet.
 - **LED day binary sensor** (`binary_sensor`)
   - Indicates whether the grow light day period is active.
 - **VWC sensor** (`sensor`)
@@ -134,6 +134,40 @@ GrowAssistant – Crop Steering v0.1 does not create or manage the irrigation he
 - **Block Reason**
   - Reports a short diagnostic reason describing the current irrigation state and why a P1/P2 shot would or would not be allowed.
 
+
+## Services
+
+GrowAssistant – Crop Steering provides basic read/write service helpers for maintenance and external automation workflows. These services update the configured Home Assistant helper entities only; they do **not** implement a full pump control loop or native irrigation shot engine. Existing YAML automations or future control logic remain responsible for deciding when shots may run.
+
+### `growassistant_crop_steering.reset_cycle`
+
+Resets daily/cycle helper state for the configured integration entry:
+
+- Turns off the configured **P1 active** input boolean.
+- Turns off the configured **P1 done** input boolean.
+- Turns off the configured **P1 window opened today** input boolean.
+- Resets the configured **P1 shots done** counter.
+- Resets the configured **P2 shots done** counter.
+- Sets the configured **P2 reference VWC** input number to `0` when configured.
+
+This service does **not** touch the pump switch.
+
+### `growassistant_crop_steering.start_p1`
+
+Prepares helper state so existing Home Assistant YAML/automation logic can begin P1 behavior:
+
+- Turns on the configured **P1 active** input boolean.
+- Turns on the configured **P1 window opened today** input boolean.
+- Turns off the configured **P1 done** input boolean.
+- Sets the configured **P2 reference VWC** input number to `0` when configured.
+- Sets the configured **Last shot** input datetime to the current time minus **P1 soak minutes** minus one second, allowing external logic that checks soak time to permit the first P1 shot.
+
+This service does **not** turn on the pump.
+
+### `growassistant_crop_steering.stop_pump`
+
+Turns off only the configured pump switch. This is an explicit safety/manual stop service and does not modify cycle state helpers.
+
 ## Phase states
 
 The phase sensor can report these states:
@@ -147,7 +181,7 @@ The phase sensor can report these states:
 
 ## Safety warning
 
-This integration is intended for irrigation diagnostics. Pump control is not implemented in v0.1.
+This integration is intended for irrigation diagnostics and basic helper services. Full automatic pump control is not implemented in v0.1; the only pump-facing service is the explicit manual/safety `growassistant_crop_steering.stop_pump` service.
 
 Future pump control should always use a physical/electrical failsafe and Home Assistant failsafe automation. Do not rely on Home Assistant, this integration, or software logic alone to prevent flooding, pump damage, crop damage, or electrical hazards.
 
@@ -156,7 +190,7 @@ Future pump control should always use a physical/electrical failsafe and Home As
 - **v0.1 diagnostics**
   - Read-only setup, diagnostic sensors, phase state, soak countdowns, and block reason diagnostics.
 - **v0.2 services / reset helpers**
-  - Service helpers for operational resets and maintenance workflows.
+  - Basic service helpers for operational resets, P1 start preparation, and manual/safety pump stop workflows.
 - **v0.3 optional blueprint-based shot engine**
   - Optional Home Assistant automation/blueprint approach for shot orchestration.
 - **v0.4 native Python irrigation engine**

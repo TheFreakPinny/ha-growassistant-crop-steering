@@ -7,7 +7,9 @@ NAME = "GrowAssistant – Crop Steering"
 VERSION = "0.1.0"
 
 DEFAULT_NAME = NAME
-SERVICE_REFRESH = "refresh"
+SERVICE_RESET_CYCLE = "reset_cycle"
+SERVICE_START_P1 = "start_p1"
+SERVICE_STOP_PUMP = "stop_pump"
 
 CONF_PUMP_SWITCH = "pump_switch"
 CONF_LED_DAY_SENSOR = "led_day_sensor"
