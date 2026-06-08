@@ -30,17 +30,27 @@ from .const import (
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
     CONF_P0_TRANSPIRATION_MIN,
+    CONF_DRAIN_SENSOR,
+    CONF_DRAIN_TRAY_SENSOR,
+    CONF_FIELD_CAPACITY_VWC,
     CONF_P1_ACTIVE,
     CONF_P1_DONE,
     CONF_P1_DURATION_MIN,
     CONF_P1_INTERVAL_MIN,
     CONF_P1_MODE,
     CONF_P1_SOAK_MIN,
+    CONF_P1_START_VWC,
+    CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P2_END_OFFSET_MIN,
     CONF_P2_INTERVAL_MIN,
+    CONF_P2_MODE,
+    CONF_P2_REF_VWC,
     CONF_P2_SHOTS,
     CONF_P2_SOAK_MIN,
     CONF_P2_SHOTS_DONE,
+    CONF_P2_VWC_DROP,
+    CONF_VWC_CAP,
+    CONF_VWC_SENSOR,
     DEFAULT_NAME,
     DOMAIN,
     VERSION,
@@ -55,6 +65,26 @@ _PHASE_P3_DRYBACK = "p3_dryback"
 
 _MODE_MANUAL = "manual"
 _DEFAULT_SOAK_SECONDS = 5 * 60
+
+_REQUIRED_BLOCK_REASON_KEYS = (
+    CONF_VWC_SENSOR,
+    CONF_LED_DAY_SENSOR,
+    CONF_P1_MODE,
+    CONF_P2_MODE,
+    CONF_P1_ACTIVE,
+    CONF_P1_DONE,
+    CONF_P1_WINDOW_OPENED_TODAY,
+    CONF_P1_START_VWC,
+    CONF_FIELD_CAPACITY_VWC,
+    CONF_P1_SOAK_MIN,
+    CONF_P2_SOAK_MIN,
+    CONF_P2_SHOTS,
+    CONF_P2_SHOTS_DONE,
+    CONF_P2_REF_VWC,
+    CONF_P2_VWC_DROP,
+    CONF_P2_END_OFFSET_MIN,
+    CONF_LAST_SHOT,
+)
 
 _STATUS_SENSOR = SensorEntityDescription(
     key="status",
@@ -86,6 +116,12 @@ _P2_SOAK_REMAINING_SENSOR = SensorEntityDescription(
     icon="mdi:timer-sand",
 )
 
+_BLOCK_REASON_SENSOR = SensorEntityDescription(
+    key="block_reason",
+    translation_key="block_reason",
+    icon="mdi:information-outline",
+)
+
 _UNAVAILABLE_STATES = {None, "", STATE_UNAVAILABLE, STATE_UNKNOWN}
 
 
@@ -113,6 +149,7 @@ async def async_setup_entry(
                 CONF_P2_SOAK_MIN,
                 _PHASE_P2_MIDDAY,
             ),
+            GrowAssistantBlockReasonSensor(hass, entry),
         ]
     )
 
@@ -205,32 +242,36 @@ class GrowAssistantSoakRemainingSensor(SensorEntity):
 
     def _soak_state(self) -> dict[str, Any]:
         """Calculate soak countdown state and attributes."""
-        phase = _calculate_phase(self.hass, self._entry)[0]
-        soak_s = _get_soak_seconds(
+        return _calculate_soak_remaining(
             self.hass,
-            self._entry.data.get(self._soak_config_key),
+            self._entry,
+            self._soak_config_key,
+            self._active_phase,
         )
-        last_shot = _get_datetime_state(
-            self.hass,
-            self._entry.data.get(CONF_LAST_SHOT),
-        )
-        active = phase == self._active_phase
-        elapsed_s = None
-        remaining_s = 0
 
-        if last_shot is not None:
-            elapsed_s = max(0, int((dt_util.now() - last_shot).total_seconds()))
-            if active:
-                remaining_s = max(0, soak_s - elapsed_s)
 
-        return {
-            "phase": phase,
-            "last_shot": last_shot.isoformat() if last_shot is not None else None,
-            "soak_s": soak_s,
-            "elapsed_s": elapsed_s,
-            "active": active,
-            "remaining_s": remaining_s,
-        }
+class GrowAssistantBlockReasonSensor(SensorEntity):
+    """Explain the current crop steering state without controlling irrigation."""
+
+    entity_description = _BLOCK_REASON_SENSOR
+    _attr_has_entity_name = True
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the block reason sensor."""
+        self.hass = hass
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_block_reason"
+        self._attr_device_info = _device_info(entry)
+
+    @property
+    def native_value(self) -> str:
+        """Return a short reason explaining irrigation availability."""
+        return _calculate_block_reason(self.hass, self._entry)[0]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return block reason diagnostic attributes."""
+        return _calculate_block_reason(self.hass, self._entry)[1]
 
 
 def _calculate_phase(
@@ -274,12 +315,10 @@ def _calculate_phase(
         missing_entities,
     )
 
-    p2_end_offset_s = _minutes_to_seconds(
-        _get_float_state(
-            hass,
-            entry.data.get(CONF_P2_END_OFFSET_MIN),
-            missing_entities,
-        )
+    _get_float_state(
+        hass,
+        entry.data.get(CONF_P2_END_OFFSET_MIN),
+        missing_entities,
     )
 
     p1_mode = _get_text_state(
@@ -381,6 +420,278 @@ def _calculate_phase(
     return _PHASE_P3_DRYBACK, debug_attributes
 
 
+def _calculate_soak_remaining(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    soak_config_key: str,
+    active_phase: str,
+) -> dict[str, Any]:
+    """Calculate soak countdown state and attributes."""
+    phase = _calculate_phase(hass, entry)[0]
+    soak_s = _get_soak_seconds(hass, entry.data.get(soak_config_key))
+    last_shot = _get_datetime_state(hass, entry.data.get(CONF_LAST_SHOT))
+    active = phase == active_phase
+    elapsed_s = None
+    remaining_s = 0
+
+    if last_shot is not None:
+        elapsed_s = max(0, int((dt_util.now() - last_shot).total_seconds()))
+        if active:
+            remaining_s = max(0, soak_s - elapsed_s)
+
+    return {
+        "phase": phase,
+        "last_shot": last_shot.isoformat() if last_shot is not None else None,
+        "soak_s": soak_s,
+        "elapsed_s": elapsed_s,
+        "active": active,
+        "remaining_s": remaining_s,
+    }
+
+
+def _calculate_block_reason(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> tuple[str, dict[str, Any]]:
+    """Calculate the read-only irrigation block reason and diagnostics."""
+    phase, phase_attributes = _calculate_phase(hass, entry)
+    missing_entities = list(phase_attributes.get("missing_entities", []))
+    _collect_missing_required_entities(hass, entry, missing_entities)
+
+    vwc = _get_float_state(
+        hass,
+        entry.data.get(CONF_VWC_SENSOR),
+        missing_entities,
+    )
+    p1_mode = _get_text_state(
+        hass,
+        entry.data.get(CONF_P1_MODE),
+        missing_entities,
+    )
+    p2_mode = _get_text_state(
+        hass,
+        entry.data.get(CONF_P2_MODE),
+        missing_entities,
+    )
+    p1_start_vwc = _get_float_state(
+        hass,
+        entry.data.get(CONF_P1_START_VWC),
+        missing_entities,
+    )
+    field_capacity_vwc = _get_float_state(
+        hass,
+        entry.data.get(CONF_FIELD_CAPACITY_VWC),
+        missing_entities,
+    )
+    p2_ref_vwc = _get_float_state(
+        hass,
+        entry.data.get(CONF_P2_REF_VWC),
+        missing_entities,
+    )
+    p2_vwc_drop = _get_float_state(
+        hass,
+        entry.data.get(CONF_P2_VWC_DROP),
+        missing_entities,
+    )
+    p2_target_raw = _get_float_state(
+        hass,
+        entry.data.get(CONF_P2_SHOTS),
+        missing_entities,
+    )
+    p2_done_raw = _get_float_state(
+        hass,
+        entry.data.get(CONF_P2_SHOTS_DONE),
+        missing_entities,
+    )
+    _get_float_state(
+        hass,
+        entry.data.get(CONF_P2_END_OFFSET_MIN),
+        missing_entities,
+    )
+
+    drain = _get_optional_bool_state(hass, entry.data.get(CONF_DRAIN_SENSOR))
+    drain_tray_wet = _get_optional_bool_state(
+        hass,
+        entry.data.get(CONF_DRAIN_TRAY_SENSOR),
+    )
+    vwc_cap = _get_optional_float_state(hass, entry.data.get(CONF_VWC_CAP))
+    vwc_cap_active = vwc is not None and vwc_cap is not None and vwc >= vwc_cap
+
+    p1_soak_remaining_s = _calculate_soak_remaining(
+        hass,
+        entry,
+        CONF_P1_SOAK_MIN,
+        _PHASE_P1_MORNING,
+    )["remaining_s"]
+    p2_soak_remaining_s = _calculate_soak_remaining(
+        hass,
+        entry,
+        CONF_P2_SOAK_MIN,
+        _PHASE_P2_MIDDAY,
+    )["remaining_s"]
+
+    p2_target = max(0, int(p2_target_raw or 0))
+    p2_done = max(0, int(p2_done_raw or 0))
+    p2_drop_threshold = (
+        p2_ref_vwc - p2_vwc_drop
+        if p2_ref_vwc is not None and p2_vwc_drop is not None
+        else None
+    )
+    p2_time_ok = phase_attributes.get("p2_time_ok")
+
+    missing_entities = _deduplicate_missing_entities(missing_entities, entry)
+
+    attributes = {
+        "phase": phase,
+        "vwc": vwc,
+        "p1_mode": p1_mode,
+        "p2_mode": p2_mode,
+        "p1_start_vwc": p1_start_vwc,
+        "field_capacity_vwc": field_capacity_vwc,
+        "p2_ref_vwc": p2_ref_vwc,
+        "p2_vwc_drop": p2_vwc_drop,
+        "p2_drop_threshold": p2_drop_threshold,
+        "p2_target": p2_target,
+        "p2_done": p2_done,
+        "p1_soak_remaining_s": p1_soak_remaining_s,
+        "p2_soak_remaining_s": p2_soak_remaining_s,
+        "drain": drain,
+        "drain_tray_wet": drain_tray_wet,
+        "vwc_cap_active": vwc_cap_active,
+        "missing_entities": missing_entities,
+    }
+
+    if missing_entities:
+        return "missing required entity", attributes
+
+    p1_mode_value = (p1_mode or "").lower()
+    p2_mode_value = (p2_mode or "").lower()
+
+    if phase == _PHASE_OFF:
+        return "off", attributes
+
+    if phase == _PHASE_PRE_ON:
+        return "off", attributes
+
+    if phase == _PHASE_P3_DRYBACK:
+        if phase_attributes.get("led_day"):
+            if p2_mode_value == _MODE_MANUAL:
+                return "P2 blocked: mode is manual", attributes
+
+            if p2_ref_vwc is None or p2_ref_vwc <= 0:
+                return "P2 blocked: no reference VWC", attributes
+
+            if p2_done >= p2_target:
+                return "P2 blocked: shot limit reached", attributes
+
+            if p2_time_ok is False:
+                return "P2 blocked: end offset reached", attributes
+
+            if vwc_cap_active:
+                return "P2 blocked: VWC cap active", attributes
+
+            if p2_soak_remaining_s > 0:
+                return "P2 blocked: soak active", attributes
+
+            if (
+                vwc is not None
+                and p2_drop_threshold is not None
+                and vwc > p2_drop_threshold
+            ):
+                return "P2 blocked: VWC drop not reached", attributes
+
+        return "P3 dryback active", attributes
+
+    if phase == _PHASE_P0_TRANSPIRATION:
+        return "P0 transpiration active", attributes
+
+    if phase == _PHASE_P1_MORNING:
+        if p1_mode_value == _MODE_MANUAL:
+            return "P1 blocked: mode is manual", attributes
+
+        if p1_soak_remaining_s > 0:
+            return "P1 blocked: soak active", attributes
+
+        if drain_tray_wet:
+            return "P1 blocked: drain tray wet", attributes
+
+        if (
+            vwc is not None
+            and field_capacity_vwc is not None
+            and vwc >= field_capacity_vwc
+        ):
+            return "P1 complete: field capacity reached", attributes
+
+        if vwc is not None and p1_start_vwc is not None and vwc > p1_start_vwc:
+            return "P1 blocked: VWC above start threshold", attributes
+
+        return "P1 ready", attributes
+
+    if phase == _PHASE_P2_MIDDAY:
+        if p2_mode_value == _MODE_MANUAL:
+            return "P2 blocked: mode is manual", attributes
+
+        if p2_ref_vwc is None or p2_ref_vwc <= 0:
+            return "P2 blocked: no reference VWC", attributes
+
+        if p2_done >= p2_target:
+            return "P2 blocked: shot limit reached", attributes
+
+        if p2_time_ok is False:
+            return "P2 blocked: end offset reached", attributes
+
+        if vwc_cap_active:
+            return "P2 blocked: VWC cap active", attributes
+
+        if p2_soak_remaining_s > 0:
+            return "P2 blocked: soak active", attributes
+
+        if (
+            vwc is not None
+            and p2_drop_threshold is not None
+            and vwc > p2_drop_threshold
+        ):
+            return "P2 blocked: VWC drop not reached", attributes
+
+        return "P2 ready", attributes
+
+    return "off", attributes
+
+
+def _collect_missing_required_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    missing_entities: list[str],
+) -> None:
+    """Append missing required block reason entities before detailed reads."""
+    for key in _REQUIRED_BLOCK_REASON_KEYS:
+        entity_id = entry.data.get(key)
+        if entity_id is None:
+            missing_entities.append(key)
+            continue
+
+        state = hass.states.get(entity_id)
+        if state is None or state.state in _UNAVAILABLE_STATES:
+            missing_entities.append(entity_id)
+
+
+def _deduplicate_missing_entities(
+    missing_entities: list[str],
+    entry: ConfigEntry,
+) -> list[str]:
+    """Return unique missing required entity identifiers."""
+    configured_required = {
+        entry.data.get(key) or key for key in _REQUIRED_BLOCK_REASON_KEYS
+    }
+    deduplicated: list[str] = []
+
+    for entity_id in missing_entities:
+        if entity_id in configured_required and entity_id not in deduplicated:
+            deduplicated.append(entity_id)
+
+    return deduplicated
+
+
 def _device_info(entry: ConfigEntry) -> dict[str, Any]:
     """Return shared GrowAssistant device info."""
     return {
@@ -438,6 +749,22 @@ def _get_float_state(
     except ValueError:
         missing_entities.append(entity_id or "not_configured")
         return None
+
+
+def _get_optional_bool_state(hass: HomeAssistant, entity_id: str | None) -> bool | None:
+    """Return an optional boolean state without marking it missing."""
+    if entity_id is None:
+        return None
+
+    return _get_bool_state(hass, entity_id, [])
+
+
+def _get_optional_float_state(hass: HomeAssistant, entity_id: str | None) -> float | None:
+    """Return an optional numeric state without marking it missing."""
+    if entity_id is None:
+        return None
+
+    return _get_float_state(hass, entity_id, [])
 
 
 def _minutes_to_seconds(value: float | None) -> int | None:
