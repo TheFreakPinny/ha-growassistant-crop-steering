@@ -60,14 +60,14 @@ GrowAssistant – Crop Steering v0.1 does not create or manage the irrigation he
   - Use an `input_boolean` helper for safe testing or dummy pump simulation without energizing real hardware.
   - Used only by the `growassistant_crop_steering.stop_pump` manual/safety service in v0.1.
   - Automatic pump control is not implemented yet.
-- **LED day binary sensor** (`binary_sensor`)
-  - Indicates whether the grow light day period is active.
 - **VWC sensor** (`sensor`)
   - Reports substrate volumetric water content.
 - **LED sunrise input_datetime** (`input_datetime`)
   - Grow light start time.
 - **LED sunset input_datetime** (`input_datetime`)
   - Grow light end time.
+  - The integration calculates LED day/night state, seconds since light-on, and seconds until light-off from the configured sunrise/sunset helpers. No external LED day binary sensor is required.
+  - Fixed schedules that cross midnight, such as 19:00 to 07:00, are supported.
 - **P1 mode input_select** (`input_select`)
   - Stores the P1 steering mode.
 - **P2 mode input_select** (`input_select`)
@@ -130,6 +130,7 @@ GrowAssistant – Crop Steering v0.1 does not create or manage the irrigation he
   - Reports integration readiness.
 - **Phase**
   - Reports the current crop steering phase.
+  - Calculates light state internally from the configured LED sunrise and LED sunset `input_datetime` helpers, including over-midnight schedules.
 - **P1 Soak Remaining**
   - Reports remaining P1 soak time in seconds.
 - **P2 Soak Remaining**

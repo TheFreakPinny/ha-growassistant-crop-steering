@@ -17,7 +17,6 @@ from .const import (
     CONF_DRAIN_TRAY_SENSOR,
     CONF_FIELD_CAPACITY_VWC,
     CONF_LAST_SHOT,
-    CONF_LED_DAY_SENSOR,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
     CONF_P0_TRANSPIRATION_MIN,
@@ -50,7 +49,6 @@ from .const import (
 
 _REQUIRED_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
     (CONF_PUMP_SWITCH, ["switch", "input_boolean"]),
-    (CONF_LED_DAY_SENSOR, "binary_sensor"),
     (CONF_VWC_SENSOR, "sensor"),
     (CONF_LED_SUNRISE, "input_datetime"),
     (CONF_LED_SUNSET, "input_datetime"),
