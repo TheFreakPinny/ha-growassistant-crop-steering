@@ -1,0 +1,108 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GrowAssistant – Crop Steering einrichten",
+        "description": "Wähle die vorhandenen Home-Assistant-Helfer und Entitäten aus, die GrowAssistant verwenden soll. Die Pumpensteuerung ist in v0.1 noch nicht implementiert.",
+        "data": {
+          "name": "Name",
+          "pump_switch": "Pumpenschalter",
+          "led_day_sensor": "LED-Tag-Binärsensor",
+          "vwc_sensor": "VWC-Sensor",
+          "drain_sensor": "Drainage-Binärsensor",
+          "drain_tray_sensor": "Drainagewannen-Leck-Binärsensor",
+          "led_sunrise": "LED-Sonnenaufgangszeit",
+          "led_sunset": "LED-Sonnenuntergangszeit",
+          "p1_mode": "P1-Modus",
+          "p2_mode": "P2-Modus",
+          "p0_transpiration_min": "P0-Transpiration in Minuten",
+          "p1_duration_min": "P1-Dauer in Minuten",
+          "p1_interval_min": "P1-Intervall in Minuten",
+          "p1_shot_duration_s": "P1-Shot-Dauer in Sekunden",
+          "p2_interval_min": "P2-Intervall in Minuten",
+          "p2_shot_duration_s": "P2-Shot-Dauer in Sekunden",
+          "p2_shots": "P2-Shots",
+          "p1_soak_min": "P1-Soak in Minuten",
+          "p2_soak_min": "P2-Soak in Minuten",
+          "p2_end_offset_min": "P2-Endversatz in Minuten",
+          "field_capacity_vwc": "Feldkapazität VWC",
+          "p1_start_vwc": "P1-Start-VWC",
+          "p2_vwc_drop": "P2-VWC-Abfall",
+          "p2_ref_vwc": "P2-Referenz-VWC",
+          "vwc_cap": "VWC-Obergrenze",
+          "vwc_hyst": "VWC-Hysterese",
+          "p1_active": "P1 aktiv",
+          "p1_done": "P1 erledigt",
+          "p1_window_opened_today": "P1-Fenster heute geöffnet",
+          "p1_shots_done": "P1-Shots erledigt",
+          "p2_shots_done": "P2-Shots erledigt",
+          "last_shot": "Zeitpunkt des letzten Shots"
+        },
+        "data_description": {
+          "name": "Anzeigename für diese GrowAssistant-Instanz.",
+          "pump_switch": "Schalterentität für die Bewässerungspumpe. Sie wird in v0.1 nur für zukünftige Verwendung gespeichert.",
+          "led_day_sensor": "Binärsensor, der angibt, ob die Lichtphase der Pflanzenbeleuchtung aktiv ist.",
+          "vwc_sensor": "Sensorentität, die den volumetrischen Wassergehalt des Substrats meldet.",
+          "drain_sensor": "Optionaler Binärsensor, der Drainage- oder Abflussaktivität bei der Bewässerung anzeigt.",
+          "drain_tray_sensor": "Optionaler Binärsensor, der ein Leck oder einen Hochwasserzustand in der Drainagewanne anzeigt.",
+          "led_sunrise": "Input-datetime-Helfer für die Sonnenaufgangs- oder Startzeit der Pflanzenbeleuchtung.",
+          "led_sunset": "Input-datetime-Helfer für die Sonnenuntergangs- oder Endzeit der Pflanzenbeleuchtung.",
+          "p1_mode": "Input-select-Helfer, der den P1-Steuerungsmodus speichert.",
+          "p2_mode": "Input-select-Helfer, der den P2-Steuerungsmodus speichert.",
+          "p0_transpiration_min": "Input-number-Helfer für die minimale P0-Transpirationsdauer in Minuten.",
+          "p1_duration_min": "Input-number-Helfer für die P1-Fensterdauer in Minuten.",
+          "p1_interval_min": "Optionaler Input-number-Helfer für das P1-Bewässerungsintervall in Minuten.",
+          "p1_shot_duration_s": "Input-number-Helfer für die P1-Bewässerungs-Shot-Dauer in Sekunden.",
+          "p2_interval_min": "Optionaler Input-number-Helfer für das P2-Bewässerungsintervall in Minuten.",
+          "p2_shot_duration_s": "Input-number-Helfer für die P2-Bewässerungs-Shot-Dauer in Sekunden.",
+          "p2_shots": "Input-number-Helfer für die Zielanzahl der P2-Bewässerungs-Shots.",
+          "p1_soak_min": "Input-number-Helfer für die P1-Soak-Zeit in Minuten.",
+          "p2_soak_min": "Input-number-Helfer für die P2-Soak-Zeit in Minuten.",
+          "p2_end_offset_min": "Input-number-Helfer für den P2-Endversatz vor LED-Sonnenuntergang in Minuten.",
+          "field_capacity_vwc": "Input-number-Helfer für die Feldkapazität des Substrats als VWC.",
+          "p1_start_vwc": "Input-number-Helfer für den VWC-Schwellenwert, der das P1-Verhalten startet.",
+          "p2_vwc_drop": "Input-number-Helfer für den VWC-Abfallzielwert während P2.",
+          "p2_ref_vwc": "Input-number-Helfer für den P2-Referenz-VWC.",
+          "vwc_cap": "Optionaler Input-number-Helfer für die maximale VWC-Obergrenze.",
+          "vwc_hyst": "Optionaler Input-number-Helfer für die VWC-Hysterese.",
+          "p1_active": "Input-boolean-Helfer, der speichert, ob P1 aktuell aktiv ist.",
+          "p1_done": "Input-boolean-Helfer, der speichert, ob P1 für den Tag abgeschlossen ist.",
+          "p1_window_opened_today": "Input-boolean-Helfer, der speichert, ob das P1-Fenster heute geöffnet wurde.",
+          "p1_shots_done": "Counter-Helfer, der erledigte P1-Shots zählt.",
+          "p2_shots_done": "Counter-Helfer, der erledigte P2-Shots zählt.",
+          "last_shot": "Input-datetime-Helfer für den Zeitstempel des letzten Bewässerungs-Shots."
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "GrowAssistant – Crop Steering ist bereits eingerichtet."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "ready": "Bereit"
+        }
+      },
+      "phase": {
+        "name": "Phase",
+        "state": {
+          "off": "Aus",
+          "pre_on": "Vor Licht-an",
+          "p0_transpiration": "P0-Transpiration",
+          "p1_morning": "P1-Morgen",
+          "p2_midday": "P2-Mittag",
+          "p3_dryback": "P3-Dryback"
+        }
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Aktualisieren",
+      "description": "Fordert eine Platzhalter-Aktualisierung an. Die Bewässerungslogik ist in v0.1 noch nicht implementiert."
+    }
+  }
+}

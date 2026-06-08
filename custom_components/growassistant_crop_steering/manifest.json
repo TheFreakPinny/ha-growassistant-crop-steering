@@ -1,0 +1,15 @@
+{
+  "domain": "growassistant_crop_steering",
+  "name": "GrowAssistant – Crop Steering",
+  "codeowners": [
+    "@TheFreakPinny"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/Philipp/ha-growassistant-crop-steering",
+  "integration_type": "helper",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Philipp/ha-growassistant-crop-steering/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
