@@ -60,8 +60,11 @@ GrowAssistant – Crop Steering v0.1 does not create or manage the irrigation he
   - Use an `input_boolean` helper for safe testing or dummy pump simulation without energizing real hardware.
   - Used only by the `growassistant_crop_steering.stop_pump` manual/safety service in v0.1.
   - Automatic pump control is not implemented yet.
-- **VWC sensor** (`sensor`)
-  - Reports substrate volumetric water content.
+- **VWC sensor(s)** (`sensor`)
+  - Select one or multiple sensor entities that report substrate volumetric water content.
+  - When multiple sensors are selected, all valid numeric values are averaged automatically.
+  - Unknown, unavailable, or non-numeric sensor states are ignored.
+  - If all selected sensors are unavailable or invalid, VWC-dependent diagnostics are blocked until at least one valid value is available.
 - **LED sunrise input_datetime** (`input_datetime`)
   - Grow light start time. Create this helper as **Time only**.
   - Example LED sunrise/light start value: `19:00:00`.

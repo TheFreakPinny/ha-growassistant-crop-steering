@@ -84,9 +84,15 @@ _OPTIONAL_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
 )
 
 
-def _entity_selector(domain: str | list[str]) -> selector.EntitySelector:
+def _entity_selector(
+    domain: str | list[str],
+    *,
+    multiple: bool = False,
+) -> selector.EntitySelector:
     """Return an entity selector constrained to one or more Home Assistant domains."""
-    return selector.EntitySelector(selector.EntitySelectorConfig(domain=domain))
+    return selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=domain, multiple=multiple)
+    )
 
 
 def _data_schema() -> vol.Schema:
@@ -94,7 +100,10 @@ def _data_schema() -> vol.Schema:
     schema: dict[Any, Any] = {vol.Optional(CONF_NAME, default=DEFAULT_NAME): str}
 
     for config_key, domain in _REQUIRED_ENTITY_FIELDS:
-        schema[vol.Required(config_key)] = _entity_selector(domain)
+        schema[vol.Required(config_key)] = _entity_selector(
+            domain,
+            multiple=config_key == CONF_VWC_SENSOR,
+        )
 
     for config_key, domain in _OPTIONAL_ENTITY_FIELDS:
         schema[vol.Optional(config_key)] = _entity_selector(domain)
