@@ -85,6 +85,17 @@
         "state": {
           "ready": "Ready"
         }
+      },
+      "phase": {
+        "name": "Phase",
+        "state": {
+          "off": "Off",
+          "pre_on": "Pre-on",
+          "p0_transpiration": "P0 transpiration",
+          "p1_morning": "P1 morning",
+          "p2_midday": "P2 midday",
+          "p3_dryback": "P3 dryback"
+        }
       }
     }
   },
