@@ -109,9 +109,17 @@
     }
   },
   "services": {
-    "refresh": {
-      "name": "Aktualisieren",
-      "description": "Fordert eine Platzhalter-Aktualisierung an. Die Bewässerungslogik ist in v0.1 noch nicht implementiert."
+    "reset_cycle": {
+      "name": "Zyklus zurücksetzen",
+      "description": "Setzt die täglichen Zyklus-Helfer zurück, ohne den Pumpenschalter zu berühren."
+    },
+    "start_p1": {
+      "name": "P1 starten",
+      "description": "Bereitet die P1-Helfer vor und setzt den Letzter-Schuss-Helfer zurück, damit bestehende Automationen den ersten P1-Schuss erlauben können. Dieser Dienst schaltet die Pumpe nicht ein."
+    },
+    "stop_pump": {
+      "name": "Pumpe stoppen",
+      "description": "Schaltet nur den konfigurierten Pumpenschalter als expliziten manuellen/Sicherheitsstopp aus."
     }
   }
 }
