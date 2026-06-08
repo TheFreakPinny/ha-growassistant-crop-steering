@@ -96,6 +96,12 @@
           "p2_midday": "P2 midday",
           "p3_dryback": "P3 dryback"
         }
+      },
+      "p1_soak_remaining": {
+        "name": "P1 Soak Remaining"
+      },
+      "p2_soak_remaining": {
+        "name": "P2 Soak Remaining"
       }
     }
   },
