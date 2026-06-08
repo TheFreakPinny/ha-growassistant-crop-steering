@@ -119,11 +119,13 @@ class GrowAssistantPhaseSensor(SensorEntity):
     def _calculate_phase(self) -> tuple[str, dict[str, Any]]:
         """Calculate the current crop steering phase and debug attributes."""
         missing_entities: list[str] = []
+
         led_day = _get_bool_state(
             self.hass,
             self._entry.data.get(CONF_LED_DAY_SENSOR),
             missing_entities,
         )
+
         p0_s = _minutes_to_seconds(
             _get_float_state(
                 self.hass,
@@ -131,6 +133,7 @@ class GrowAssistantPhaseSensor(SensorEntity):
                 missing_entities,
             )
         )
+
         p1_s = _minutes_to_seconds(
             _get_float_state(
                 self.hass,
@@ -138,16 +141,19 @@ class GrowAssistantPhaseSensor(SensorEntity):
                 missing_entities,
             )
         )
+
         p2_target = _get_float_state(
             self.hass,
             self._entry.data.get(CONF_P2_SHOTS),
             missing_entities,
         )
+
         p2_done = _get_float_state(
             self.hass,
             self._entry.data.get(CONF_P2_SHOTS_DONE),
             missing_entities,
         )
+
         p2_end_offset_s = _minutes_to_seconds(
             _get_float_state(
                 self.hass,
@@ -155,21 +161,26 @@ class GrowAssistantPhaseSensor(SensorEntity):
                 missing_entities,
             )
         )
+
         p1_mode = _get_text_state(
             self.hass,
             self._entry.data.get(CONF_P1_MODE),
             missing_entities,
         )
+
         p1_active = _get_bool_state(
             self.hass,
             self._entry.data.get(CONF_P1_ACTIVE),
             missing_entities,
         )
+
         p1_done = _get_bool_state(
             self.hass,
             self._entry.data.get(CONF_P1_DONE),
             missing_entities,
         )
+
+        # Optional interval helpers are read only for diagnostics / future use.
         _get_float_state(self.hass, self._entry.data.get(CONF_P2_INTERVAL_MIN), [])
         _get_float_state(self.hass, self._entry.data.get(CONF_P1_INTERVAL_MIN), [])
 
@@ -179,17 +190,20 @@ class GrowAssistantPhaseSensor(SensorEntity):
             self._entry.data.get(CONF_LED_SUNSET),
             missing_entities,
         )
+
         since_on_s = None if timing is None else timing[0]
         until_off_s = None if timing is None else timing[1]
 
         p2_target_value = max(0, int(p2_target or 0))
         p2_done_value = max(0, int(p2_done or 0))
         p2_shots_left = max(0, p2_target_value - p2_done_value)
+
         p2_time_ok = (
             until_off_s is not None
             and p2_end_offset_s is not None
             and until_off_s > p2_end_offset_s
         )
+
         debug_attributes = {
             "led_day": led_day,
             "since_on_s": since_on_s,
@@ -232,8 +246,10 @@ class GrowAssistantPhaseSensor(SensorEntity):
         if p1_mode_value == _MODE_MANUAL:
             if since_on_s < p0_s + p1_s:
                 return _PHASE_P1_MORNING, debug_attributes
+
             if p2_available:
                 return _PHASE_P2_MIDDAY, debug_attributes
+
             return _PHASE_P3_DRYBACK, debug_attributes
 
         if p1_active:
@@ -257,7 +273,9 @@ def _device_info(entry: ConfigEntry) -> dict[str, Any]:
 
 
 def _get_text_state(
-    hass: HomeAssistant, entity_id: str | None, missing_entities: list[str]
+    hass: HomeAssistant,
+    entity_id: str | None,
+    missing_entities: list[str],
 ) -> str | None:
     """Return an entity state as text if available."""
     if entity_id is None:
@@ -273,7 +291,9 @@ def _get_text_state(
 
 
 def _get_bool_state(
-    hass: HomeAssistant, entity_id: str | None, missing_entities: list[str]
+    hass: HomeAssistant,
+    entity_id: str | None,
+    missing_entities: list[str],
 ) -> bool | None:
     """Return a boolean entity state if available."""
     state = _get_text_state(hass, entity_id, missing_entities)
@@ -284,7 +304,9 @@ def _get_bool_state(
 
 
 def _get_float_state(
-    hass: HomeAssistant, entity_id: str | None, missing_entities: list[str]
+    hass: HomeAssistant,
+    entity_id: str | None,
+    missing_entities: list[str],
 ) -> float | None:
     """Return a numeric entity state if available."""
     state = _get_text_state(hass, entity_id, missing_entities)
@@ -315,6 +337,7 @@ def _light_timing(
     """Return seconds since light-on and until light-off."""
     sunrise_s = _get_time_seconds(hass, sunrise_entity_id, missing_entities)
     sunset_s = _get_time_seconds(hass, sunset_entity_id, missing_entities)
+
     if sunrise_s is None or sunset_s is None:
         return None
 
@@ -325,8 +348,6 @@ def _light_timing(
         return 0, 24 * 60 * 60
 
     if sunset_s > sunrise_s:
-        if now_s < sunrise_s:
-            return now_s - sunrise_s, sunset_s - now_s
         return now_s - sunrise_s, sunset_s - now_s
 
     if now_s >= sunrise_s:
@@ -336,7 +357,9 @@ def _light_timing(
 
 
 def _get_time_seconds(
-    hass: HomeAssistant, entity_id: str | None, missing_entities: list[str]
+    hass: HomeAssistant,
+    entity_id: str | None,
+    missing_entities: list[str],
 ) -> int | None:
     """Return seconds since midnight for an input_datetime entity."""
     if entity_id is None:
@@ -351,12 +374,15 @@ def _get_time_seconds(
     hour = state.attributes.get("hour")
     minute = state.attributes.get("minute")
     second = state.attributes.get("second", 0)
+
     if hour is not None and minute is not None:
         return int(hour) * 3600 + int(minute) * 60 + int(second or 0)
 
     state_value = state.state
+
     if "T" in state_value:
         state_value = state_value.split("T", 1)[1]
+
     if " " in state_value:
         state_value = state_value.rsplit(" ", 1)[1]
 
