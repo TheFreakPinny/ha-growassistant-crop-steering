@@ -2,18 +2,29 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import (
+    CONF_NAME,
+    STATE_ON,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+    UnitOfTime,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .const import (
     CONFIG_ENTITY_KEYS,
+    CONF_LAST_SHOT,
     CONF_LED_DAY_SENSOR,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
@@ -23,9 +34,11 @@ from .const import (
     CONF_P1_DURATION_MIN,
     CONF_P1_INTERVAL_MIN,
     CONF_P1_MODE,
+    CONF_P1_SOAK_MIN,
     CONF_P2_END_OFFSET_MIN,
     CONF_P2_INTERVAL_MIN,
     CONF_P2_SHOTS,
+    CONF_P2_SOAK_MIN,
     CONF_P2_SHOTS_DONE,
     DEFAULT_NAME,
     DOMAIN,
@@ -40,6 +53,7 @@ _PHASE_P2_MIDDAY = "p2_midday"
 _PHASE_P3_DRYBACK = "p3_dryback"
 
 _MODE_MANUAL = "manual"
+_DEFAULT_SOAK_SECONDS = 5 * 60
 
 _STATUS_SENSOR = SensorEntityDescription(
     key="status",
@@ -51,6 +65,22 @@ _PHASE_SENSOR = SensorEntityDescription(
     key="phase",
     translation_key="phase",
     icon="mdi:chart-timeline-variant",
+)
+
+_P1_SOAK_REMAINING_SENSOR = SensorEntityDescription(
+    key="p1_soak_remaining",
+    translation_key="p1_soak_remaining",
+    device_class=SensorDeviceClass.DURATION,
+    native_unit_of_measurement=UnitOfTime.SECONDS,
+    icon="mdi:timer-sand",
+)
+
+_P2_SOAK_REMAINING_SENSOR = SensorEntityDescription(
+    key="p2_soak_remaining",
+    translation_key="p2_soak_remaining",
+    device_class=SensorDeviceClass.DURATION,
+    native_unit_of_measurement=UnitOfTime.SECONDS,
+    icon="mdi:timer-sand",
 )
 
 _UNAVAILABLE_STATES = {None, "", STATE_UNAVAILABLE, STATE_UNKNOWN}
@@ -66,6 +96,20 @@ async def async_setup_entry(
         [
             GrowAssistantStatusSensor(entry),
             GrowAssistantPhaseSensor(hass, entry),
+            GrowAssistantSoakRemainingSensor(
+                hass,
+                entry,
+                _P1_SOAK_REMAINING_SENSOR,
+                CONF_P1_SOAK_MIN,
+                _PHASE_P1_MORNING,
+            ),
+            GrowAssistantSoakRemainingSensor(
+                hass,
+                entry,
+                _P2_SOAK_REMAINING_SENSOR,
+                CONF_P2_SOAK_MIN,
+                _PHASE_P2_MIDDAY,
+            ),
         ]
     )
 
@@ -109,156 +153,229 @@ class GrowAssistantPhaseSensor(SensorEntity):
     @property
     def native_value(self) -> str:
         """Return the current crop steering phase."""
-        return self._calculate_phase()[0]
+        return _calculate_phase(self.hass, self._entry)[0]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return phase calculation debug attributes."""
-        return self._calculate_phase()[1]
+        return _calculate_phase(self.hass, self._entry)[1]
 
-    def _calculate_phase(self) -> tuple[str, dict[str, Any]]:
-        """Calculate the current crop steering phase and debug attributes."""
-        missing_entities: list[str] = []
 
-        led_day = _get_bool_state(
-            self.hass,
-            self._entry.data.get(CONF_LED_DAY_SENSOR),
-            missing_entities,
-        )
+class GrowAssistantSoakRemainingSensor(SensorEntity):
+    """Count down soak time remaining for an active crop steering phase."""
 
-        p0_s = _minutes_to_seconds(
-            _get_float_state(
-                self.hass,
-                self._entry.data.get(CONF_P0_TRANSPIRATION_MIN),
-                missing_entities,
-            )
-        )
+    _attr_has_entity_name = True
 
-        p1_s = _minutes_to_seconds(
-            _get_float_state(
-                self.hass,
-                self._entry.data.get(CONF_P1_DURATION_MIN),
-                missing_entities,
-            )
-        )
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        entity_description: SensorEntityDescription,
+        soak_config_key: str,
+        active_phase: str,
+    ) -> None:
+        """Initialize the soak countdown sensor."""
+        self.hass = hass
+        self._entry = entry
+        self.entity_description = entity_description
+        self._soak_config_key = soak_config_key
+        self._active_phase = active_phase
+        self._attr_unique_id = f"{entry.entry_id}_{entity_description.key}"
+        self._attr_device_info = _device_info(entry)
 
-        p2_target = _get_float_state(
-            self.hass,
-            self._entry.data.get(CONF_P2_SHOTS),
-            missing_entities,
-        )
+    @property
+    def native_value(self) -> int:
+        """Return the remaining soak time in seconds."""
+        return self._soak_state()["remaining_s"]
 
-        p2_done = _get_float_state(
-            self.hass,
-            self._entry.data.get(CONF_P2_SHOTS_DONE),
-            missing_entities,
-        )
-
-        p2_end_offset_s = _minutes_to_seconds(
-            _get_float_state(
-                self.hass,
-                self._entry.data.get(CONF_P2_END_OFFSET_MIN),
-                missing_entities,
-            )
-        )
-
-        p1_mode = _get_text_state(
-            self.hass,
-            self._entry.data.get(CONF_P1_MODE),
-            missing_entities,
-        )
-
-        p1_active = _get_bool_state(
-            self.hass,
-            self._entry.data.get(CONF_P1_ACTIVE),
-            missing_entities,
-        )
-
-        p1_done = _get_bool_state(
-            self.hass,
-            self._entry.data.get(CONF_P1_DONE),
-            missing_entities,
-        )
-
-        # Optional interval helpers are read only for diagnostics / future use.
-        _get_float_state(self.hass, self._entry.data.get(CONF_P2_INTERVAL_MIN), [])
-        _get_float_state(self.hass, self._entry.data.get(CONF_P1_INTERVAL_MIN), [])
-
-        timing = _light_timing(
-            self.hass,
-            self._entry.data.get(CONF_LED_SUNRISE),
-            self._entry.data.get(CONF_LED_SUNSET),
-            missing_entities,
-        )
-
-        since_on_s = None if timing is None else timing[0]
-        until_off_s = None if timing is None else timing[1]
-
-        p2_target_value = max(0, int(p2_target or 0))
-        p2_done_value = max(0, int(p2_done or 0))
-        p2_shots_left = max(0, p2_target_value - p2_done_value)
-
-        p2_time_ok = (
-            until_off_s is not None
-            and p2_end_offset_s is not None
-            and until_off_s > p2_end_offset_s
-        )
-
-        debug_attributes = {
-            "led_day": led_day,
-            "since_on_s": since_on_s,
-            "p0_s": p0_s,
-            "p1_s": p1_s,
-            "p2_target": p2_target_value,
-            "p2_done": p2_done_value,
-            "p2_shots_left": p2_shots_left,
-            "p2_time_ok": p2_time_ok,
-            "missing_entities": missing_entities,
-            "p1_mode": p1_mode,
-            "p1_active": p1_active,
-            "p1_done": p1_done,
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return soak countdown debug attributes."""
+        soak_state = self._soak_state()
+        return {
+            "phase": soak_state["phase"],
+            "last_shot": soak_state["last_shot"],
+            "soak_s": soak_state["soak_s"],
+            "elapsed_s": soak_state["elapsed_s"],
+            "active": soak_state["active"],
         }
 
-        if led_day is None:
-            return _PHASE_OFF, debug_attributes
+    def _soak_state(self) -> dict[str, Any]:
+        """Calculate soak countdown state and attributes."""
+        phase = _calculate_phase(self.hass, self._entry)[0]
+        soak_s = _get_soak_seconds(
+            self.hass,
+            self._entry.data.get(self._soak_config_key),
+        )
+        last_shot = _get_datetime_state(
+            self.hass,
+            self._entry.data.get(CONF_LAST_SHOT),
+        )
+        active = phase == self._active_phase
+        elapsed_s = None
+        remaining_s = 0
 
-        if not led_day:
-            return _PHASE_P3_DRYBACK, debug_attributes
+        if last_shot is not None:
+            elapsed_s = max(0, int((dt_util.now() - last_shot).total_seconds()))
+            if active:
+                remaining_s = max(0, soak_s - elapsed_s)
 
-        if missing_entities:
-            return _PHASE_OFF, debug_attributes
+        return {
+            "phase": phase,
+            "last_shot": last_shot.isoformat() if last_shot is not None else None,
+            "soak_s": soak_s,
+            "elapsed_s": elapsed_s,
+            "active": active,
+            "remaining_s": remaining_s,
+        }
 
-        if since_on_s is None:
-            return _PHASE_PRE_ON, debug_attributes
 
-        if p0_s is None or p1_s is None:
-            return _PHASE_OFF, debug_attributes
+def _calculate_phase(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> tuple[str, dict[str, Any]]:
+    """Calculate the current crop steering phase and debug attributes."""
+    missing_entities: list[str] = []
 
-        if since_on_s < 0:
-            return _PHASE_PRE_ON, debug_attributes
+    led_day = _get_bool_state(
+        hass,
+        entry.data.get(CONF_LED_DAY_SENSOR),
+        missing_entities,
+    )
 
-        if since_on_s < p0_s:
-            return _PHASE_P0_TRANSPIRATION, debug_attributes
+    p0_s = _minutes_to_seconds(
+        _get_float_state(
+            hass,
+            entry.data.get(CONF_P0_TRANSPIRATION_MIN),
+            missing_entities,
+        )
+    )
 
-        p2_available = p2_target_value > 0 and p2_shots_left > 0 and p2_time_ok
-        p1_mode_value = (p1_mode or "").lower()
+    p1_s = _minutes_to_seconds(
+        _get_float_state(
+            hass,
+            entry.data.get(CONF_P1_DURATION_MIN),
+            missing_entities,
+        )
+    )
 
-        if p1_mode_value == _MODE_MANUAL:
-            if since_on_s < p0_s + p1_s:
-                return _PHASE_P1_MORNING, debug_attributes
+    p2_target = _get_float_state(
+        hass,
+        entry.data.get(CONF_P2_SHOTS),
+        missing_entities,
+    )
 
-            if p2_available:
-                return _PHASE_P2_MIDDAY, debug_attributes
+    p2_done = _get_float_state(
+        hass,
+        entry.data.get(CONF_P2_SHOTS_DONE),
+        missing_entities,
+    )
 
-            return _PHASE_P3_DRYBACK, debug_attributes
+    p2_end_offset_s = _minutes_to_seconds(
+        _get_float_state(
+            hass,
+            entry.data.get(CONF_P2_END_OFFSET_MIN),
+            missing_entities,
+        )
+    )
 
-        if p1_active:
+    p1_mode = _get_text_state(
+        hass,
+        entry.data.get(CONF_P1_MODE),
+        missing_entities,
+    )
+
+    p1_active = _get_bool_state(
+        hass,
+        entry.data.get(CONF_P1_ACTIVE),
+        missing_entities,
+    )
+
+    p1_done = _get_bool_state(
+        hass,
+        entry.data.get(CONF_P1_DONE),
+        missing_entities,
+    )
+
+    # Optional interval helpers are read only for diagnostics / future use.
+    _get_float_state(hass, entry.data.get(CONF_P2_INTERVAL_MIN), [])
+    _get_float_state(hass, entry.data.get(CONF_P1_INTERVAL_MIN), [])
+
+    timing = _light_timing(
+        hass,
+        entry.data.get(CONF_LED_SUNRISE),
+        entry.data.get(CONF_LED_SUNSET),
+        missing_entities,
+    )
+
+    since_on_s = None if timing is None else timing[0]
+    until_off_s = None if timing is None else timing[1]
+
+    p2_target_value = max(0, int(p2_target or 0))
+    p2_done_value = max(0, int(p2_done or 0))
+    p2_shots_left = max(0, p2_target_value - p2_done_value)
+
+    p2_time_ok = (
+        until_off_s is not None
+        and p2_end_offset_s is not None
+        and until_off_s > p2_end_offset_s
+    )
+
+    debug_attributes = {
+        "led_day": led_day,
+        "since_on_s": since_on_s,
+        "p0_s": p0_s,
+        "p1_s": p1_s,
+        "p2_target": p2_target_value,
+        "p2_done": p2_done_value,
+        "p2_shots_left": p2_shots_left,
+        "p2_time_ok": p2_time_ok,
+        "missing_entities": missing_entities,
+        "p1_mode": p1_mode,
+        "p1_active": p1_active,
+        "p1_done": p1_done,
+    }
+
+    if led_day is None:
+        return _PHASE_OFF, debug_attributes
+
+    if not led_day:
+        return _PHASE_P3_DRYBACK, debug_attributes
+
+    if missing_entities:
+        return _PHASE_OFF, debug_attributes
+
+    if since_on_s is None:
+        return _PHASE_PRE_ON, debug_attributes
+
+    if p0_s is None or p1_s is None:
+        return _PHASE_OFF, debug_attributes
+
+    if since_on_s < 0:
+        return _PHASE_PRE_ON, debug_attributes
+
+    if since_on_s < p0_s:
+        return _PHASE_P0_TRANSPIRATION, debug_attributes
+
+    p2_available = p2_target_value > 0 and p2_shots_left > 0 and p2_time_ok
+    p1_mode_value = (p1_mode or "").lower()
+
+    if p1_mode_value == _MODE_MANUAL:
+        if since_on_s < p0_s + p1_s:
             return _PHASE_P1_MORNING, debug_attributes
 
-        if p1_done and p2_available:
+        if p2_available:
             return _PHASE_P2_MIDDAY, debug_attributes
 
         return _PHASE_P3_DRYBACK, debug_attributes
+
+    if p1_active:
+        return _PHASE_P1_MORNING, debug_attributes
+
+    if p1_done and p2_available:
+        return _PHASE_P2_MIDDAY, debug_attributes
+
+    return _PHASE_P3_DRYBACK, debug_attributes
 
 
 def _device_info(entry: ConfigEntry) -> dict[str, Any]:
@@ -326,6 +443,42 @@ def _minutes_to_seconds(value: float | None) -> int | None:
         return None
 
     return max(0, int(value * 60))
+
+
+def _get_soak_seconds(hass: HomeAssistant, entity_id: str | None) -> int:
+    """Return configured soak seconds, defaulting to five minutes if invalid."""
+    soak_min = _get_float_state(hass, entity_id, [])
+    soak_s = _minutes_to_seconds(soak_min)
+    return _DEFAULT_SOAK_SECONDS if soak_s is None else soak_s
+
+
+def _get_datetime_state(hass: HomeAssistant, entity_id: str | None) -> datetime | None:
+    """Return an input_datetime state as an aware datetime if available."""
+    if entity_id is None:
+        return None
+
+    state = hass.states.get(entity_id)
+    if state is None or state.state in _UNAVAILABLE_STATES:
+        return None
+
+    timestamp = state.attributes.get("timestamp")
+    if timestamp is not None:
+        try:
+            return datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
+        except (TypeError, ValueError, OSError):
+            pass
+
+    parsed = dt_util.parse_datetime(state.state)
+    if parsed is None:
+        try:
+            parsed = datetime.fromisoformat(state.state)
+        except ValueError:
+            return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+
+    return parsed
 
 
 def _light_timing(
