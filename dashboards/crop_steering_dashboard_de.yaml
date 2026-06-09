@@ -1,0 +1,122 @@
+type: vertical-stack
+cards:
+  - type: markdown
+    content: |-
+      # GrowAssistant – Crop Steering
+      Hallo {{ user }}
+
+      Übersicht, Diagnose und Einstellungen für dein Crop-Steering-System.
+  - type: heading
+    heading: Phase & Diagnose
+    heading_style: subtitle
+  - type: markdown
+    content: >-
+      ## Aktuelle Phase
+
+
+      **Phase:** `{{ states('sensor.growassistant_crop_steering_phase') | upper
+      }}`
+
+
+      **Blockierungsgrund:**
+
+      `{{ states('sensor.growassistant_crop_steering_blockierungsgrund') }}`
+
+
+      **Letzter Shot:**
+
+      `{{ states('sensor.growassistant_crop_steering_letzter_shot') }}`
+  - type: entities
+    title: Soak Status
+    show_header_toggle: false
+    entities:
+      - entity: sensor.growassistant_crop_steering_verbleibender_p1_soak
+        name: P1 Soak Restzeit
+        icon: mdi:timer-sand
+      - entity: sensor.growassistant_crop_steering_verbleibender_p2_soak
+        name: P2 Soak Restzeit
+        icon: mdi:timer-sand
+  - type: entities
+    title: P1 / P2 Status
+    show_header_toggle: false
+    entities:
+      - entity: switch.growassistant_crop_steering_p1_aktiv
+        name: P1 aktiv
+      - entity: switch.growassistant_crop_steering_p1_erledigt
+        name: P1 erledigt
+      - entity: switch.growassistant_crop_steering_p1_fenster_heute_geoffnet
+        name: P1-Fenster heute geöffnet
+      - entity: number.growassistant_crop_steering_p1_shots_erledigt
+        name: P1 Shots erledigt
+      - entity: number.growassistant_crop_steering_p2_shots_erledigt
+        name: P2 Shots erledigt
+  - type: heading
+    heading: P0 / P1 Einstellungen
+    heading_style: subtitle
+  - type: entities
+    title: P0 – Transpiration
+    show_header_toggle: false
+    entities:
+      - entity: number.growassistant_crop_steering_p0_transpiration
+        name: Dauer P0
+  - type: entities
+    title: P1 – Morning
+    show_header_toggle: false
+    entities:
+      - entity: number.growassistant_crop_steering_p1_start_vwc
+        name: P1 Start VWC
+      - entity: number.growassistant_crop_steering_p1_shots
+        name: Max Shots P1
+      - entity: number.growassistant_crop_steering_p1_shot_duration
+        name: Shot-Dauer P1
+      - entity: number.growassistant_crop_steering_p1_soak
+        name: P1 Soak
+      - entity: number.growassistant_crop_steering_p1_duration
+        name: Dauer P1
+      - entity: number.growassistant_crop_steering_p1_interval
+        name: Intervall P1
+      - entity: number.growassistant_crop_steering_field_capacity_vwc
+        name: Field Capacity VWC
+  - type: heading
+    heading: P2 Einstellungen
+    heading_style: subtitle
+  - type: entities
+    title: P2 – Midday
+    show_header_toggle: false
+    entities:
+      - entity: number.growassistant_crop_steering_p2_vwc_drop
+        name: P2 VWC Drop
+      - entity: number.growassistant_crop_steering_p2_reference_vwc
+        name: P2 Referenz VWC
+      - entity: number.growassistant_crop_steering_p2_shots
+        name: P2 Shots
+      - entity: number.growassistant_crop_steering_p2_shot_duration
+        name: Shot-Dauer P2
+      - entity: number.growassistant_crop_steering_p2_soak
+        name: P2 Soak
+      - entity: number.growassistant_crop_steering_p2_end_offset
+        name: P2 End-Offset
+      - entity: number.growassistant_crop_steering_p2_interval
+        name: Intervall P2
+  - type: entities
+    title: VWC Begrenzung
+    show_header_toggle: false
+    entities:
+      - entity: number.growassistant_crop_steering_vwc_cap
+        name: VWC Obergrenze
+      - entity: number.growassistant_crop_steering_vwc_hysteresis
+        name: VWC Hysterese
+  - type: markdown
+    content: >-
+      ## Sicherheit
+
+
+      Diese Integration enthält aktuell keine native Python-Shot-Engine.
+
+
+      Pumpensteuerung erfolgt nur über den optionalen Blueprint oder eigene
+      Home-Assistant-Automationen.
+
+
+      Verwende für echte Pumpen immer eine physische/elektrische
+      Failsafe-Lösung.

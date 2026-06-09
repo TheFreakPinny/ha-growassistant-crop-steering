@@ -195,6 +195,15 @@ Clears the integration-managed **Last Shot** timestamp. Legacy `input_datetime` 
 
 Turns off only the configured pump switch or input_boolean test helper. Use a `switch` for real pump hardware and an `input_boolean` helper for safe test/dummy pump simulation. This is an explicit safety/manual stop service and does not modify cycle state helpers.
 
+
+## Example dashboards
+
+Copy-paste Lovelace manual-card dashboard examples are available for quick setup and reference:
+
+- German manual-card example: `dashboards/crop_steering_dashboard_de.yaml`
+
+Entity IDs may differ depending on your Home Assistant language and entity registry. If an entity is not found, check the GrowAssistant device page in Home Assistant for the entity IDs created in your instance.
+
 ## Optional automation blueprint
 
 This repository includes an optional Home Assistant automation blueprint for users who want YAML-based pump orchestration before native Python pump control is implemented:
