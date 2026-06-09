@@ -319,10 +319,11 @@ class GrowAssistantBlockReasonSensor(SensorEntity):
 
 
 def _configured_mode(entry: ConfigEntry, config_key: str, default: str) -> str:
-    """Return a configured P1/P2 mode value, falling back to a safe default."""
-    mode = entry.data.get(config_key, default)
-    if isinstance(mode, str) and mode.lower() in MODE_OPTIONS:
-        return mode.lower()
+    """Return a configured P1/P2 mode from options, data, or a safe default."""
+    for source in (entry.options, entry.data):
+        mode = source.get(config_key)
+        if isinstance(mode, str) and mode.lower() in MODE_OPTIONS:
+            return mode.lower()
 
     return default
 

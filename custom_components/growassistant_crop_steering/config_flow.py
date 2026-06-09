@@ -93,6 +93,36 @@ def _mode_selector() -> selector.SelectSelector:
     )
 
 
+def _configured_mode(
+    entry: config_entries.ConfigEntry,
+    config_key: str,
+    default: str = MODE_SENSOR,
+) -> str:
+    """Return a P1/P2 mode from options, then data, then a safe default."""
+    for source in (entry.options, entry.data):
+        mode = source.get(config_key)
+        if isinstance(mode, str) and mode.lower() in MODE_OPTIONS:
+            return mode.lower()
+
+    return default
+
+
+def _options_schema(entry: config_entries.ConfigEntry) -> vol.Schema:
+    """Return the options form schema."""
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_P1_MODE,
+                default=_configured_mode(entry, CONF_P1_MODE),
+            ): _mode_selector(),
+            vol.Required(
+                CONF_P2_MODE,
+                default=_configured_mode(entry, CONF_P2_MODE),
+            ): _mode_selector(),
+        }
+    )
+
+
 def _entity_selector(
     domain: str | list[str],
     *,
@@ -128,6 +158,13 @@ class GrowAssistantCropSteeringConfigFlow(config_entries.ConfigFlow, domain=DOMA
 
     VERSION = 1
 
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> OptionsFlowHandler:
+        """Create the options flow."""
+        return OptionsFlowHandler(config_entry)
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -148,4 +185,30 @@ class GrowAssistantCropSteeringConfigFlow(config_entries.ConfigFlow, domain=DOMA
         return self.async_show_form(
             step_id="user",
             data_schema=_data_schema(),
+        )
+
+
+class OptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options for GrowAssistant Crop Steering."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize the options flow handler."""
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage P1/P2 steering mode options."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={
+                    CONF_P1_MODE: user_input[CONF_P1_MODE],
+                    CONF_P2_MODE: user_input[CONF_P2_MODE],
+                },
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_options_schema(self._config_entry),
         )

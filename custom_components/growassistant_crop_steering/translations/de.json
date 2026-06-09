@@ -133,5 +133,21 @@
         "manual": "Manuell / Intervall-gesteuert"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "GrowAssistant – Crop Steering Optionen",
+        "description": "Ändere die P1/P2-Steuerungsmodi nach der Einrichtung. Diese Optionen überschreiben die während der Einrichtung ausgewählten Modi.",
+        "data": {
+          "p1_mode": "P1-Modus",
+          "p2_mode": "P2-Modus"
+        },
+        "data_description": {
+          "p1_mode": "Wähle, ob P1 sensor-gesteuert oder manuell / intervall-gesteuert läuft.",
+          "p2_mode": "Wähle, ob P2 sensor-gesteuert oder manuell / intervall-gesteuert läuft."
+        }
+      }
+    }
   }
 }
