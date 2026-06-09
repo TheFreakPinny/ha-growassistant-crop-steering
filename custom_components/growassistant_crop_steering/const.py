@@ -59,6 +59,16 @@ CONF_LAST_SHOT = "last_shot"
 
 
 @dataclass(frozen=True)
+class BooleanStateDescription:
+    """Description of an integration-managed boolean crop steering state flag."""
+
+    key: str
+    name: str
+    icon: str
+    default_value: bool
+
+
+@dataclass(frozen=True)
 class NumericSettingDescription:
     """Description of an integration-managed numeric crop steering setting."""
 
@@ -69,6 +79,25 @@ class NumericSettingDescription:
     native_max_value: float
     native_step: float
     default_value: float
+
+
+BOOLEAN_STATE_DESCRIPTIONS: tuple[BooleanStateDescription, ...] = (
+    BooleanStateDescription(CONF_P1_ACTIVE, "P1 Active", "mdi:water-pump", False),
+    BooleanStateDescription(CONF_P1_DONE, "P1 Done", "mdi:check-circle-outline", False),
+    BooleanStateDescription(
+        CONF_P1_WINDOW_OPENED_TODAY,
+        "P1 Window Opened Today",
+        "mdi:window-open-variant",
+        False,
+    ),
+)
+
+BOOLEAN_STATE_DEFAULTS = {
+    description.key: description.default_value
+    for description in BOOLEAN_STATE_DESCRIPTIONS
+}
+
+BOOLEAN_STATE_KEYS = tuple(BOOLEAN_STATE_DEFAULTS)
 
 
 NUMERIC_SETTING_DESCRIPTIONS: tuple[NumericSettingDescription, ...] = (
@@ -118,6 +147,7 @@ CONFIG_OPTION_KEYS = (
     CONF_P1_MODE,
     CONF_P2_MODE,
     *NUMERIC_SETTING_KEYS,
+    *BOOLEAN_STATE_KEYS,
 )
 
 CONFIG_ENTITY_KEYS = (

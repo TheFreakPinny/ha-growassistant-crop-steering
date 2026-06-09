@@ -125,16 +125,27 @@
       "vwc_hyst": {
         "name": "VWC Hysteresis"
       }
+    },
+    "switch": {
+      "p1_active": {
+        "name": "P1 aktiv"
+      },
+      "p1_done": {
+        "name": "P1 erledigt"
+      },
+      "p1_window_opened_today": {
+        "name": "P1-Fenster heute geöffnet"
+      }
     }
   },
   "services": {
     "reset_cycle": {
       "name": "Zyklus zurücksetzen",
-      "description": "Setzt Tages-/Zyklus-Helfer zurück, ohne den konfigurierten Pumpenschalter oder input_boolean-Testhelfer zu berühren."
+      "description": "Setzt verwaltete P1-Statusschalter und Tages-/Zyklus-Helfer zurück, ohne den konfigurierten Pumpenschalter oder input_boolean-Testhelfer zu berühren."
     },
     "start_p1": {
       "name": "P1 starten",
-      "description": "Bereitet die P1-Helfer vor und setzt den Letzter-Schuss-Helfer zurück, damit bestehende Automationen den ersten P1-Schuss erlauben können. Dieser Dienst schaltet die Pumpe nicht ein."
+      "description": "Schaltet verwaltete P1-Statusschalter ein und setzt den Letzter-Schuss-Helfer zurück, damit bestehende Home-Assistant-Automatisierungen den ersten P1-Schuss erlauben können."
     },
     "stop_pump": {
       "name": "Pumpe stoppen",

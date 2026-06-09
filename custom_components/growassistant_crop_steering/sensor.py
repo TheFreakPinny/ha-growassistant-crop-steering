@@ -24,6 +24,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BOOLEAN_STATE_DEFAULTS,
     CONFIG_ENTRY_KEYS,
     CONF_LAST_SHOT,
     CONF_LED_DAY_SENSOR,
@@ -35,12 +36,12 @@ from .const import (
     CONF_FIELD_CAPACITY_VWC,
     CONF_P1_ACTIVE,
     CONF_P1_DONE,
+    CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P1_DURATION_MIN,
     CONF_P1_INTERVAL_MIN,
     CONF_P1_MODE,
     CONF_P1_SOAK_MIN,
     CONF_P1_START_VWC,
-    CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P2_END_OFFSET_MIN,
     CONF_P2_INTERVAL_MIN,
     CONF_P2_MODE,
@@ -74,9 +75,6 @@ _REQUIRED_BLOCK_REASON_KEYS = (
     CONF_VWC_SENSOR,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
-    CONF_P1_ACTIVE,
-    CONF_P1_DONE,
-    CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P2_SHOTS_DONE,
     CONF_LAST_SHOT,
 )
@@ -375,16 +373,11 @@ def _calculate_phase(
     p1_mode = _configured_mode(entry, CONF_P1_MODE, MODE_SENSOR)
     p2_mode = _configured_mode(entry, CONF_P2_MODE, MODE_SENSOR)
 
-    p1_active = _get_bool_state(
-        hass,
-        entry.data.get(CONF_P1_ACTIVE),
-        missing_entities,
-    )
+    p1_active = _get_boolean_state(hass, entry, CONF_P1_ACTIVE, missing_entities)
 
-    p1_done = _get_bool_state(
-        hass,
-        entry.data.get(CONF_P1_DONE),
-        missing_entities,
+    p1_done = _get_boolean_state(hass, entry, CONF_P1_DONE, missing_entities)
+    p1_window_opened_today = _get_boolean_state(
+        hass, entry, CONF_P1_WINDOW_OPENED_TODAY, missing_entities
     )
 
     # Optional interval helpers are read only for diagnostics / future use.
@@ -427,6 +420,7 @@ def _calculate_phase(
         "p2_mode": p2_mode,
         "p1_active": p1_active,
         "p1_done": p1_done,
+        "p1_window_opened_today": p1_window_opened_today,
     }
 
     if led_day is None:
@@ -824,6 +818,38 @@ def _get_float_state(
     except ValueError:
         missing_entities.append(entity_id or "not_configured")
         return None
+
+
+def _get_boolean_state(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    config_key: str,
+    missing_entities: list[str],
+) -> bool | None:
+    """Return a managed boolean state, falling back to a legacy helper."""
+    managed_value = entry.options.get(config_key)
+    if managed_value is not None:
+        if isinstance(managed_value, bool):
+            return managed_value
+
+        if isinstance(managed_value, str):
+            normalized = managed_value.lower()
+            if normalized in {"1", "true", "on", "yes"}:
+                return True
+            if normalized in {"0", "false", "off", "no"}:
+                return False
+
+        if isinstance(managed_value, int):
+            return bool(managed_value)
+
+        missing_entities.append(config_key)
+        return None
+
+    entity_id = entry.data.get(config_key)
+    if isinstance(entity_id, str) and entity_id:
+        return _get_bool_state(hass, entity_id, missing_entities)
+
+    return BOOLEAN_STATE_DEFAULTS.get(config_key, False)
 
 
 def _get_optional_bool_state(hass: HomeAssistant, entity_id: str | None) -> bool | None:

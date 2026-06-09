@@ -9,9 +9,11 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, Platform
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BOOLEAN_STATE_DEFAULTS,
     CONF_LAST_SHOT,
     CONF_P1_ACTIVE,
     CONF_P1_DONE,
@@ -30,7 +32,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: tuple[Platform, ...] = (Platform.NUMBER, Platform.SENSOR)
+PLATFORMS: tuple[Platform, ...] = (Platform.NUMBER, Platform.SENSOR, Platform.SWITCH)
 
 DOMAIN_COUNTER = "counter"
 DOMAIN_INPUT_BOOLEAN = "input_boolean"
@@ -43,6 +45,8 @@ SERVICE_SET_DATETIME = "set_datetime"
 SERVICE_SET_VALUE = "set_value"
 SERVICE_TURN_OFF = "turn_off"
 SERVICE_TURN_ON = "turn_on"
+
+SIGNAL_SWITCH_STATE_UPDATED = f"{DOMAIN}_switch_state_updated"
 
 ATTR_DATETIME = "datetime"
 ATTR_VALUE = "value"
@@ -109,15 +113,9 @@ def _entries_for_service(hass: HomeAssistant, service_name: str) -> list[ConfigE
 
 async def _reset_cycle_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reset daily/cycle helper state for one config entry without touching the pump."""
-    await _call_helper_service(
-        hass, entry, CONF_P1_ACTIVE, DOMAIN_INPUT_BOOLEAN, SERVICE_TURN_OFF
-    )
-    await _call_helper_service(
-        hass, entry, CONF_P1_DONE, DOMAIN_INPUT_BOOLEAN, SERVICE_TURN_OFF
-    )
-    await _call_helper_service(
-        hass, entry, CONF_P1_WINDOW_OPENED_TODAY, DOMAIN_INPUT_BOOLEAN, SERVICE_TURN_OFF
-    )
+    await _set_boolean_state(hass, entry, CONF_P1_ACTIVE, False)
+    await _set_boolean_state(hass, entry, CONF_P1_DONE, False)
+    await _set_boolean_state(hass, entry, CONF_P1_WINDOW_OPENED_TODAY, False)
     await _call_helper_service(
         hass, entry, CONF_P1_SHOTS_DONE, DOMAIN_COUNTER, SERVICE_COUNTER_RESET
     )
@@ -132,20 +130,50 @@ async def _reset_cycle_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def _start_p1_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Set P1 helpers for one config entry without starting the pump."""
-    await _call_helper_service(
-        hass, entry, CONF_P1_ACTIVE, DOMAIN_INPUT_BOOLEAN, SERVICE_TURN_ON
-    )
-    await _call_helper_service(
-        hass, entry, CONF_P1_WINDOW_OPENED_TODAY, DOMAIN_INPUT_BOOLEAN, SERVICE_TURN_ON
-    )
-    await _call_helper_service(
-        hass, entry, CONF_P1_DONE, DOMAIN_INPUT_BOOLEAN, SERVICE_TURN_OFF
-    )
+    """Set P1 state flags for one config entry without starting the pump."""
+    await _set_boolean_state(hass, entry, CONF_P1_ACTIVE, True)
+    await _set_boolean_state(hass, entry, CONF_P1_WINDOW_OPENED_TODAY, True)
+    await _set_boolean_state(hass, entry, CONF_P1_DONE, False)
     await _set_numeric_setting(hass, entry, CONF_P2_REF_VWC, 0)
     await _set_last_shot_before_soak(hass, entry)
     _LOGGER.info(
         "GrowAssistant Crop Steering start_p1 completed for config entry %s",
+        entry.entry_id,
+    )
+
+
+async def _set_boolean_state(
+    hass: HomeAssistant, entry: ConfigEntry, config_key: str, value: bool
+) -> None:
+    """Persist a managed boolean state flag and mirror it to a legacy helper if present."""
+    if config_key in BOOLEAN_STATE_DEFAULTS:
+        options = dict(entry.options)
+        options[config_key] = value
+        hass.config_entries.async_update_entry(entry, options=options)
+        async_dispatcher_send(hass, f"{SIGNAL_SWITCH_STATE_UPDATED}_{entry.entry_id}")
+        _LOGGER.info(
+            "GrowAssistant Crop Steering set managed boolean state %s to %s for config entry %s",
+            config_key,
+            value,
+            entry.entry_id,
+        )
+
+    entity_id = _legacy_input_boolean_entity_id(entry, config_key)
+    if entity_id is None:
+        return
+
+    service = SERVICE_TURN_ON if value else SERVICE_TURN_OFF
+    await hass.services.async_call(
+        DOMAIN_INPUT_BOOLEAN,
+        service,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+    _LOGGER.info(
+        "GrowAssistant Crop Steering set legacy %s (%s) to %s for config entry %s",
+        config_key,
+        entity_id,
+        value,
         entry.entry_id,
     )
 
@@ -248,6 +276,15 @@ async def _call_helper_service(
         entity_id,
         entry.entry_id,
     )
+
+
+def _legacy_input_boolean_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
+    """Return a legacy input_boolean helper entity id if one is configured."""
+    entity_id = entry.data.get(config_key)
+    if isinstance(entity_id, str) and entity_id.strip():
+        return entity_id
+
+    return None
 
 
 def _legacy_numeric_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
