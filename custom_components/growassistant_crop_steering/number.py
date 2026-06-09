@@ -7,7 +7,8 @@ from typing import Any
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -20,6 +21,7 @@ from .const import (
 )
 
 PARALLEL_UPDATES = 0
+SIGNAL_NUMBER_STATE_UPDATED = f"{DOMAIN}_number_state_updated"
 
 
 async def async_setup_entry(
@@ -58,9 +60,25 @@ class GrowAssistantSettingNumber(NumberEntity):
             native_min_value=setting_description.native_min_value,
             native_max_value=setting_description.native_max_value,
             native_step=setting_description.native_step,
+            icon=setting_description.icon,
         )
         self._attr_unique_id = f"{entry.entry_id}_{setting_description.key}"
         self._attr_device_info = _device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Register for service-driven value updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_NUMBER_STATE_UPDATED}_{self._entry.entry_id}",
+                self._handle_state_updated,
+            )
+        )
+
+    @callback
+    def _handle_state_updated(self) -> None:
+        """Write the current persisted value after an external update."""
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> float:

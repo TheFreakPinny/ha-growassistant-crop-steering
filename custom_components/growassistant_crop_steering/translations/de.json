@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "GrowAssistant – Crop Steering einrichten",
-        "description": "Wähle die vorhandenen Home-Assistant-Entitäten, die GrowAssistant verwenden soll. Numerische Einstellungen werden automatisch als Number-Entitäten erstellt. Pumpensteuerung ist in v0.1 nicht implementiert.",
+        "description": "Wähle die vorhandenen Home-Assistant-Entitäten, die GrowAssistant verwenden soll. Numerische Einstellungen und Shot-Zähler werden automatisch als Number-Entitäten erstellt. Pumpensteuerung ist in v0.1 nicht implementiert.",
         "data": {
           "name": "Name",
           "pump_switch": "Pumpenschalter oder Testhelfer",
@@ -34,8 +34,8 @@
           "p1_active": "Input-boolean-Helfer, der speichert, ob P1 aktuell aktiv ist.",
           "p1_done": "Input-boolean-Helfer, der speichert, ob P1 für den Tag abgeschlossen ist.",
           "p1_window_opened_today": "Input-boolean-Helfer, der speichert, ob das P1-Fenster heute geöffnet wurde.",
-          "p1_shots_done": "Counter-Helfer, der erledigte P1-Shots zählt.",
-          "p2_shots_done": "Counter-Helfer, der erledigte P2-Shots zählt.",
+          "p1_shots_done": "Optionaler Legacy-Counter-Helfer, der erledigte P1-Shots zählt. Neue Installationen verwenden die verwaltete Number-Entität.",
+          "p2_shots_done": "Optionaler Legacy-Counter-Helfer, der erledigte P2-Shots zählt. Neue Installationen verwenden die verwaltete Number-Entität.",
           "last_shot": "Input-datetime-Helfer für den Zeitstempel des letzten Bewässerungs-Shots."
         }
       }
@@ -124,6 +124,12 @@
       },
       "vwc_hyst": {
         "name": "VWC Hysteresis"
+      },
+      "p1_shots_done": {
+        "name": "P1-Shots erledigt"
+      },
+      "p2_shots_done": {
+        "name": "P2-Shots erledigt"
       }
     },
     "switch": {
@@ -141,7 +147,7 @@
   "services": {
     "reset_cycle": {
       "name": "Zyklus zurücksetzen",
-      "description": "Setzt verwaltete P1-Statusschalter und Tages-/Zyklus-Helfer zurück, ohne den konfigurierten Pumpenschalter oder input_boolean-Testhelfer zu berühren."
+      "description": "Setzt verwaltete P1-Statusschalter, verwaltete Shot-Zähler und Legacy-Tages-/Zyklus-Helfer zurück, ohne den konfigurierten Pumpenschalter oder input_boolean-Testhelfer zu berühren."
     },
     "start_p1": {
       "name": "P1 starten",

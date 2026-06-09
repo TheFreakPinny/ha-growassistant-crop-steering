@@ -58,46 +58,60 @@ blueprint:
           domain: sensor
     p1_shot_duration_s:
       name: P1 shot duration seconds
-      description: Input number containing the P1 pump runtime in seconds.
+      description: Number entity containing the P1 pump runtime in seconds.
       selector:
         entity:
-          domain: input_number
+          domain:
+            - input_number
+            - number
     p2_shot_duration_s:
       name: P2 shot duration seconds
-      description: Input number containing the P2 pump runtime in seconds.
+      description: Number entity containing the P2 pump runtime in seconds.
       selector:
         entity:
-          domain: input_number
+          domain:
+            - input_number
+            - number
     p1_active_boolean:
-      name: P1 active boolean
-      description: Input boolean that must be on before P1 shots are allowed.
+      name: P1 active switch or boolean
+      description: Managed switch or input boolean that must be on before P1 shots are allowed.
       selector:
         entity:
-          domain: input_boolean
+          domain:
+            - input_boolean
+            - switch
     p1_done_boolean:
-      name: P1 done boolean
-      description: Input boolean that must be off before P1 shots are allowed.
+      name: P1 done switch or boolean
+      description: Managed switch or input boolean that must be off before P1 shots are allowed.
       selector:
         entity:
-          domain: input_boolean
+          domain:
+            - input_boolean
+            - switch
     p1_shots_done_counter:
-      name: P1 shots done counter
-      description: Counter incremented after each completed P1 shot.
+      name: P1 shots done counter or number
+      description: Managed number or legacy counter incremented after each completed P1 shot.
       selector:
         entity:
-          domain: counter
+          domain:
+            - counter
+            - number
     p2_shots_done_counter:
-      name: P2 shots done counter
-      description: Counter incremented after each completed P2 shot.
+      name: P2 shots done counter or number
+      description: Managed number or legacy counter incremented after each completed P2 shot.
       selector:
         entity:
-          domain: counter
+          domain:
+            - counter
+            - number
     p2_shots_number:
       name: P2 shots number
-      description: Input number containing the target number of P2 shots.
+      description: Number entity containing the target number of P2 shots.
       selector:
         entity:
-          domain: input_number
+          domain:
+            - input_number
+            - number
     p2_end_offset_minutes:
       name: P2 end offset minutes (optional)
       description: >-
@@ -107,7 +121,9 @@ blueprint:
       default: ""
       selector:
         entity:
-          domain: input_number
+          domain:
+            - input_number
+            - number
     drain_tray_sensor:
       name: Drain tray sensor (optional)
       description: >-
@@ -201,9 +217,20 @@ action:
                   - service: switch.turn_off
                     target:
                       entity_id: !input pump_switch
-                  - service: counter.increment
-                    target:
-                      entity_id: !input p1_shots_done_counter
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ p1_shots_done_entity.startswith('number.') }}"
+                        sequence:
+                          - service: number.set_value
+                            target:
+                              entity_id: !input p1_shots_done_counter
+                            data:
+                              value: "{{ (states(p1_shots_done_entity) | int(0)) + 1 }}"
+                    default:
+                      - service: counter.increment
+                        target:
+                          entity_id: !input p1_shots_done_counter
               - sequence:
                   - delay:
                       seconds: >-
@@ -234,9 +261,20 @@ action:
                   - service: switch.turn_off
                     target:
                       entity_id: !input pump_switch
-                  - service: counter.increment
-                    target:
-                      entity_id: !input p2_shots_done_counter
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ p2_shots_done_entity.startswith('number.') }}"
+                        sequence:
+                          - service: number.set_value
+                            target:
+                              entity_id: !input p2_shots_done_counter
+                            data:
+                              value: "{{ (states(p2_shots_done_entity) | int(0)) + 1 }}"
+                    default:
+                      - service: counter.increment
+                        target:
+                          entity_id: !input p2_shots_done_counter
               - sequence:
                   - delay:
                       seconds: >-

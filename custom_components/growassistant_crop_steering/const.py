@@ -79,6 +79,7 @@ class NumericSettingDescription:
     native_max_value: float
     native_step: float
     default_value: float
+    icon: str | None = None
 
 
 BOOLEAN_STATE_DESCRIPTIONS: tuple[BooleanStateDescription, ...] = (
@@ -117,6 +118,9 @@ NUMERIC_SETTING_DESCRIPTIONS: tuple[NumericSettingDescription, ...] = (
     NumericSettingDescription(CONF_P1_START_VWC, "P1 Start VWC", "%", 0, 100, 1, 50),
     NumericSettingDescription(CONF_P1_SHOTS, "P1 Shots", "shots", 0, 100, 1, 10),
     NumericSettingDescription(
+        CONF_P1_SHOTS_DONE, "P1 Shots Done", "shots", 0, 100, 1, 0, "mdi:counter"
+    ),
+    NumericSettingDescription(
         CONF_P2_INTERVAL_MIN, "P2 Interval", "min", 1, 360, 1, 60
     ),
     NumericSettingDescription(
@@ -124,6 +128,9 @@ NUMERIC_SETTING_DESCRIPTIONS: tuple[NumericSettingDescription, ...] = (
     ),
     NumericSettingDescription(CONF_P2_SOAK_MIN, "P2 Soak", "min", 1, 360, 1, 5),
     NumericSettingDescription(CONF_P2_SHOTS, "P2 Shots", "shots", 0, 100, 1, 1),
+    NumericSettingDescription(
+        CONF_P2_SHOTS_DONE, "P2 Shots Done", "shots", 0, 100, 1, 0, "mdi:counter"
+    ),
     NumericSettingDescription(
         CONF_P2_END_OFFSET_MIN, "P2 End Offset", "min", 0, 1440, 1, 360
     ),

@@ -40,6 +40,7 @@ from .const import (
     CONF_P1_DURATION_MIN,
     CONF_P1_INTERVAL_MIN,
     CONF_P1_MODE,
+    CONF_P1_SHOTS_DONE,
     CONF_P1_SOAK_MIN,
     CONF_P1_START_VWC,
     CONF_P2_END_OFFSET_MIN,
@@ -75,7 +76,6 @@ _REQUIRED_BLOCK_REASON_KEYS = (
     CONF_VWC_SENSOR,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
-    CONF_P2_SHOTS_DONE,
     CONF_LAST_SHOT,
 )
 
@@ -355,9 +355,10 @@ def _calculate_phase(
         missing_entities,
     )
 
-    p2_done = _get_float_state(
+    p2_done = _get_numeric_state(
         hass,
-        entry.data.get(CONF_P2_SHOTS_DONE),
+        entry,
+        CONF_P2_SHOTS_DONE,
         missing_entities,
     )
 
@@ -537,9 +538,16 @@ def _calculate_block_reason(
         CONF_P2_SHOTS,
         missing_entities,
     )
-    p2_done_raw = _get_float_state(
+    p1_done_raw = _get_numeric_state(
         hass,
-        entry.data.get(CONF_P2_SHOTS_DONE),
+        entry,
+        CONF_P1_SHOTS_DONE,
+        missing_entities,
+    )
+    p2_done_raw = _get_numeric_state(
+        hass,
+        entry,
+        CONF_P2_SHOTS_DONE,
         missing_entities,
     )
     _get_numeric_state(
@@ -570,6 +578,7 @@ def _calculate_block_reason(
         _PHASE_P2_MIDDAY,
     )["remaining_s"]
 
+    p1_done_count = max(0, int(p1_done_raw or 0))
     p2_target = max(0, int(p2_target_raw or 0))
     p2_done = max(0, int(p2_done_raw or 0))
     p2_drop_threshold = (
@@ -595,6 +604,7 @@ def _calculate_block_reason(
         "p2_ref_vwc": p2_ref_vwc,
         "p2_vwc_drop": p2_vwc_drop,
         "p2_drop_threshold": p2_drop_threshold,
+        "p1_done_count": p1_done_count,
         "p2_target": p2_target,
         "p2_done": p2_done,
         "p1_soak_remaining_s": p1_soak_remaining_s,
