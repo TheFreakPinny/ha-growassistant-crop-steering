@@ -51,9 +51,9 @@ growassistant_crop_steering
 
 ## Required existing Home Assistant helpers/entities
 
-GrowAssistant – Crop Steering v0.1 does not create or manage most irrigation helpers for you. Create the needed Home Assistant helpers/entities first, then select them in the integration config flow. P1/P2 steering modes are configured directly during integration setup; no `input_select` helpers are required for those modes.
+GrowAssistant – Crop Steering creates editable Home Assistant **number entities** for numeric crop steering settings. New users do **not** need to create numeric `input_number` helpers manually for P0/P1/P2/VWC settings. Existing setups that already selected `input_number` helpers remain supported for migration and backward compatibility; when no managed number value has been changed yet, the integration can still fall back to those legacy helper values.
 
-During setup, choose each mode as either:
+P1/P2 steering modes are configured directly during integration setup; no `input_select` helpers are required for those modes. During setup, choose each mode as either:
 
 - `sensor` — sensor-controlled steering logic.
 - `manual` — interval/manual schedule controlled behavior.
@@ -81,57 +81,47 @@ After setup, P1/P2 modes can be changed from the integration options without del
   - `Date and time` helpers may work, but they are not recommended for LED sunrise/sunset because only the time-of-day schedule is expected.
   - The integration calculates LED day/night state, seconds since light-on, and seconds until light-off from the configured sunrise/sunset helpers. No external LED day binary sensor is required.
   - Fixed schedules that cross midnight, such as `19:00:00` to `07:00:00`, are supported.
-- **P0 transpiration minutes input_number** (`input_number`)
-  - Minimum P0 transpiration duration.
-- **P1 duration minutes input_number** (`input_number`)
-  - P1 morning steering window duration.
-- **P1 shot duration seconds input_number** (`input_number`)
-  - P1 shot duration setting for future control logic.
-- **P2 shot duration seconds input_number** (`input_number`)
-  - P2 shot duration setting for future control logic.
-- **P2 shots input_number** (`input_number`)
-  - Target number of P2 shots.
-- **P1 soak minutes input_number** (`input_number`)
-  - P1 soak countdown duration.
-- **P2 soak minutes input_number** (`input_number`)
-  - P2 soak countdown duration.
-- **P2 end offset minutes input_number** (`input_number`)
-  - Time before LED sunset when P2 should no longer be considered available.
-- **Field capacity VWC input_number** (`input_number`)
-  - Field capacity threshold used by diagnostics.
-- **P1 start VWC input_number** (`input_number`)
-  - VWC threshold for P1 start diagnostics.
-- **P2 VWC drop input_number** (`input_number`)
-  - Drop target used for P2 diagnostics.
-- **P2 reference VWC input_number** (`input_number`)
-  - Reference VWC used to calculate the P2 drop threshold.
-- **P1 active input_boolean** (`input_boolean`)
+- **P1 active** (`input_boolean`)
   - Tracks whether P1 is currently active.
-- **P1 done input_boolean** (`input_boolean`)
+- **P1 done** (`input_boolean`)
   - Tracks whether P1 has completed for the day.
-- **P1 window opened today input_boolean** (`input_boolean`)
+- **P1 window opened today** (`input_boolean`)
   - Tracks whether the P1 window opened today.
-- **P1 shots done counter** (`counter`)
+- **P1 shots done** (`counter`)
   - Tracks completed P1 shots.
-- **P2 shots done counter** (`counter`)
+- **P2 shots done** (`counter`)
   - Tracks completed P2 shots.
-- **Last shot input_datetime** (`input_datetime`)
-  - Timestamp used by the soak remaining diagnostics.
+- **Last shot time** (`input_datetime`)
+  - Stores the last irrigation shot timestamp.
+
+### Integration-managed numeric settings
+
+The integration creates editable number entities for these settings:
+
+- **P0 Transpiration**
+- **P1 Duration**
+- **P1 Interval**
+- **P1 Shot Duration**
+- **P1 Soak**
+- **P1 Start VWC**
+- **P1 Shots**
+- **P2 Interval**
+- **P2 Shot Duration**
+- **P2 Soak**
+- **P2 Shots**
+- **P2 End Offset**
+- **P2 VWC Drop**
+- **P2 Reference VWC**
+- **Field Capacity VWC**
+- **VWC Cap**
+- **VWC Hysteresis**
 
 ### Optional
 
 - **Drain binary sensor** (`binary_sensor`)
-  - Optional drain/runoff activity diagnostic input.
-- **Drain tray binary sensor** (`binary_sensor`)
-  - Optional drain tray leak or high-water diagnostic input.
-- **VWC cap input_number** (`input_number`)
-  - Optional maximum VWC cap used by diagnostics.
-- **VWC hysteresis input_number** (`input_number`)
-  - Optional VWC hysteresis value reserved for diagnostics/future logic.
-- **P1 interval minutes input_number** (`input_number`)
-  - Optional P1 interval helper reserved for diagnostics/future logic.
-- **P2 interval minutes input_number** (`input_number`)
-  - Optional P2 interval helper reserved for diagnostics/future logic.
+  - Optional binary sensor that indicates irrigation drain/runoff activity.
+- **Drain tray leak binary sensor** (`binary_sensor`)
+  - Optional binary sensor that indicates a drain tray leak or high-water condition.
 
 ## Provided sensors
 
@@ -161,7 +151,7 @@ Resets daily/cycle helper state for the configured integration entry:
 - Turns off the configured **P1 window opened today** input boolean.
 - Resets the configured **P1 shots done** counter.
 - Resets the configured **P2 shots done** counter.
-- Sets the configured **P2 reference VWC** input number to `0` when configured.
+- Sets the managed **P2 Reference VWC** number entity to `0` and mirrors that value to a legacy configured `input_number` helper when present.
 
 This service does **not** touch the configured pump switch or input_boolean test helper.
 
@@ -172,7 +162,7 @@ Prepares helper state so existing Home Assistant YAML/automation logic can begin
 - Turns on the configured **P1 active** input boolean.
 - Turns on the configured **P1 window opened today** input boolean.
 - Turns off the configured **P1 done** input boolean.
-- Sets the configured **P2 reference VWC** input number to `0` when configured.
+- Sets the managed **P2 Reference VWC** number entity to `0` and mirrors that value to a legacy configured `input_number` helper when present.
 - Sets the configured **Last shot** input datetime to the current time minus **P1 soak minutes** minus one second, allowing external logic that checks soak time to permit the first P1 shot.
 
 This service does **not** turn on the pump.

@@ -22,6 +22,7 @@ from .const import (
     CONF_P2_SHOTS_DONE,
     CONF_PUMP_SWITCH,
     DOMAIN,
+    NUMERIC_SETTING_DEFAULTS,
     SERVICE_RESET_CYCLE,
     SERVICE_START_P1,
     SERVICE_STOP_PUMP,
@@ -29,7 +30,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: tuple[Platform, ...] = (Platform.SENSOR,)
+PLATFORMS: tuple[Platform, ...] = (Platform.NUMBER, Platform.SENSOR)
 
 DOMAIN_COUNTER = "counter"
 DOMAIN_INPUT_BOOLEAN = "input_boolean"
@@ -123,7 +124,7 @@ async def _reset_cycle_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await _call_helper_service(
         hass, entry, CONF_P2_SHOTS_DONE, DOMAIN_COUNTER, SERVICE_COUNTER_RESET
     )
-    await _set_input_number(hass, entry, CONF_P2_REF_VWC, 0)
+    await _set_numeric_setting(hass, entry, CONF_P2_REF_VWC, 0)
     _LOGGER.info(
         "GrowAssistant Crop Steering reset_cycle completed for config entry %s",
         entry.entry_id,
@@ -141,7 +142,7 @@ async def _start_p1_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await _call_helper_service(
         hass, entry, CONF_P1_DONE, DOMAIN_INPUT_BOOLEAN, SERVICE_TURN_OFF
     )
-    await _set_input_number(hass, entry, CONF_P2_REF_VWC, 0)
+    await _set_numeric_setting(hass, entry, CONF_P2_REF_VWC, 0)
     await _set_last_shot_before_soak(hass, entry)
     _LOGGER.info(
         "GrowAssistant Crop Steering start_p1 completed for config entry %s",
@@ -160,11 +161,22 @@ async def _stop_pump_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     )
 
 
-async def _set_input_number(
+async def _set_numeric_setting(
     hass: HomeAssistant, entry: ConfigEntry, config_key: str, value: float | int
 ) -> None:
-    """Set an input_number helper value if it is configured."""
-    entity_id = _configured_entity_id(entry, config_key)
+    """Persist a managed numeric setting and mirror it to a legacy helper if present."""
+    if config_key in NUMERIC_SETTING_DEFAULTS:
+        options = dict(entry.options)
+        options[config_key] = value
+        hass.config_entries.async_update_entry(entry, options=options)
+        _LOGGER.info(
+            "GrowAssistant Crop Steering set managed numeric setting %s to %s for config entry %s",
+            config_key,
+            value,
+            entry.entry_id,
+        )
+
+    entity_id = _legacy_numeric_entity_id(entry, config_key)
     if entity_id is None:
         return
 
@@ -175,7 +187,7 @@ async def _set_input_number(
         blocking=True,
     )
     _LOGGER.info(
-        "GrowAssistant Crop Steering set %s (%s) to %s for config entry %s",
+        "GrowAssistant Crop Steering set legacy %s (%s) to %s for config entry %s",
         config_key,
         entity_id,
         value,
@@ -189,7 +201,7 @@ async def _set_last_shot_before_soak(hass: HomeAssistant, entry: ConfigEntry) ->
     if last_shot_entity_id is None:
         return
 
-    p1_soak_min = _state_as_float(hass, entry, CONF_P1_SOAK_MIN, 0)
+    p1_soak_min = _numeric_setting_value(hass, entry, CONF_P1_SOAK_MIN, 0)
     last_shot = dt_util.now() - timedelta(minutes=p1_soak_min, seconds=1)
 
     await hass.services.async_call(
@@ -236,6 +248,58 @@ async def _call_helper_service(
         entity_id,
         entry.entry_id,
     )
+
+
+def _legacy_numeric_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
+    """Return a legacy input_number helper entity id if one is configured."""
+    entity_id = entry.data.get(config_key)
+    if isinstance(entity_id, str) and entity_id.strip():
+        return entity_id
+
+    return None
+
+
+def _numeric_setting_value(
+    hass: HomeAssistant, entry: ConfigEntry, config_key: str, default: float
+) -> float:
+    """Read a managed numeric setting, falling back to a legacy helper or default."""
+    fallback = NUMERIC_SETTING_DEFAULTS.get(config_key, default)
+    managed_value = entry.options.get(config_key)
+    if managed_value is not None:
+        try:
+            return float(managed_value)
+        except (TypeError, ValueError):
+            _LOGGER.warning(
+                "GrowAssistant Crop Steering could not parse managed %s value %r as a number; using fallback",
+                config_key,
+                managed_value,
+            )
+
+    entity_id = _legacy_numeric_entity_id(entry, config_key)
+    if entity_id is None:
+        return fallback
+
+    state = hass.states.get(entity_id)
+    if state is None:
+        _LOGGER.warning(
+            "GrowAssistant Crop Steering could not read %s (%s); using %s",
+            config_key,
+            entity_id,
+            fallback,
+        )
+        return fallback
+
+    try:
+        return float(state.state)
+    except (TypeError, ValueError):
+        _LOGGER.warning(
+            "GrowAssistant Crop Steering could not parse %s (%s) state %r as a number; using %s",
+            config_key,
+            entity_id,
+            state.state,
+            fallback,
+        )
+        return fallback
 
 
 def _configured_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
