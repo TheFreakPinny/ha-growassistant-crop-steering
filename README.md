@@ -58,7 +58,7 @@ During setup, choose each mode as either:
 - `sensor` — sensor-controlled steering logic.
 - `manual` — interval/manual schedule controlled behavior.
 
-Changing P1/P2 modes after setup may require reconfiguring the integration until an Options Flow is added.
+After setup, P1/P2 modes can be changed from the integration options without deleting and re-adding the integration. Options values override the setup values while preserving compatibility with existing config entries.
 
 ### Required
 

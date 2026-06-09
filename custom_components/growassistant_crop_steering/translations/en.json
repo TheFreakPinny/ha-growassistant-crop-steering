@@ -133,5 +133,21 @@
         "manual": "Manual / interval-controlled"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "GrowAssistant – Crop Steering options",
+        "description": "Change P1/P2 steering modes after setup. These options override the modes selected during setup.",
+        "data": {
+          "p1_mode": "P1 mode",
+          "p2_mode": "P2 mode"
+        },
+        "data_description": {
+          "p1_mode": "Select whether P1 is sensor-controlled or manual / interval schedule controlled.",
+          "p2_mode": "Select whether P2 is sensor-controlled or manual / interval schedule controlled."
+        }
+      }
+    }
   }
 }
