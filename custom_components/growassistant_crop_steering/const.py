@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 DOMAIN = "growassistant_crop_steering"
+SIGNAL_LAST_SHOT_UPDATED = f"{DOMAIN}_last_shot_updated"
 NAME = "GrowAssistant – Crop Steering"
 VERSION = "0.1.2"
 
@@ -12,6 +13,8 @@ DEFAULT_NAME = NAME
 SERVICE_RESET_CYCLE = "reset_cycle"
 SERVICE_START_P1 = "start_p1"
 SERVICE_STOP_PUMP = "stop_pump"
+SERVICE_SET_LAST_SHOT_NOW = "set_last_shot_now"
+SERVICE_CLEAR_LAST_SHOT = "clear_last_shot"
 
 CONF_PUMP_SWITCH = "pump_switch"
 CONF_LED_DAY_SENSOR = "led_day_sensor"
@@ -187,7 +190,6 @@ CONFIG_ENTITY_KEYS = (
     CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P1_SHOTS_DONE,
     CONF_P2_SHOTS_DONE,
-    CONF_LAST_SHOT,
 )
 
 CONFIG_ENTRY_KEYS = CONFIG_ENTITY_KEYS + CONFIG_OPTION_KEYS

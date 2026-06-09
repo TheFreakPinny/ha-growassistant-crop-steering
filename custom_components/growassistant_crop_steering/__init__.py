@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
@@ -25,9 +25,12 @@ from .const import (
     CONF_PUMP_SWITCH,
     DOMAIN,
     NUMERIC_SETTING_DEFAULTS,
+    SERVICE_CLEAR_LAST_SHOT,
     SERVICE_RESET_CYCLE,
+    SERVICE_SET_LAST_SHOT_NOW,
     SERVICE_START_P1,
     SERVICE_STOP_PUMP,
+    SIGNAL_LAST_SHOT_UPDATED,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,6 +71,18 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         for entry in _entries_for_service(hass, SERVICE_START_P1):
             await _start_p1_for_entry(hass, entry)
 
+    async def _handle_set_last_shot_now(call: ServiceCall) -> None:
+        """Set the managed last-shot timestamp to now."""
+        _LOGGER.info("GrowAssistant Crop Steering set_last_shot_now service requested")
+        for entry in _entries_for_service(hass, SERVICE_SET_LAST_SHOT_NOW):
+            await _set_last_shot_for_entry(hass, entry, dt_util.now())
+
+    async def _handle_clear_last_shot(call: ServiceCall) -> None:
+        """Clear the managed last-shot timestamp."""
+        _LOGGER.info("GrowAssistant Crop Steering clear_last_shot service requested")
+        for entry in _entries_for_service(hass, SERVICE_CLEAR_LAST_SHOT):
+            await _clear_last_shot_for_entry(hass, entry)
+
     async def _handle_stop_pump(call: ServiceCall) -> None:
         """Turn off the configured pump switch or input_boolean helper."""
         _LOGGER.info("GrowAssistant Crop Steering stop_pump service requested")
@@ -76,6 +91,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     hass.services.async_register(DOMAIN, SERVICE_RESET_CYCLE, _handle_reset_cycle)
     hass.services.async_register(DOMAIN, SERVICE_START_P1, _handle_start_p1)
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_LAST_SHOT_NOW, _handle_set_last_shot_now
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_CLEAR_LAST_SHOT, _handle_clear_last_shot
+    )
     hass.services.async_register(DOMAIN, SERVICE_STOP_PUMP, _handle_stop_pump)
     return True
 
@@ -256,12 +277,29 @@ async def _set_numeric_setting(
 
 async def _set_last_shot_before_soak(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Backdate last_shot so external P1 automation can allow the first shot."""
-    last_shot_entity_id = _configured_entity_id(entry, CONF_LAST_SHOT)
-    if last_shot_entity_id is None:
-        return
-
     p1_soak_min = _numeric_setting_value(hass, entry, CONF_P1_SOAK_MIN, 0)
     last_shot = dt_util.now() - timedelta(minutes=p1_soak_min, seconds=1)
+    await _set_last_shot_for_entry(hass, entry, last_shot)
+
+
+async def _set_last_shot_for_entry(
+    hass: HomeAssistant, entry: ConfigEntry, last_shot: datetime
+) -> None:
+    """Persist a managed last-shot timestamp and mirror it to a legacy helper."""
+    options = dict(entry.options)
+    options[CONF_LAST_SHOT] = last_shot.isoformat()
+    hass.config_entries.async_update_entry(entry, options=options)
+    async_dispatcher_send(hass, f"{SIGNAL_LAST_SHOT_UPDATED}_{entry.entry_id}")
+    _LOGGER.info(
+        "GrowAssistant Crop Steering set managed %s to %s for config entry %s",
+        CONF_LAST_SHOT,
+        last_shot.isoformat(),
+        entry.entry_id,
+    )
+
+    last_shot_entity_id = _legacy_input_datetime_entity_id(entry, CONF_LAST_SHOT)
+    if last_shot_entity_id is None:
+        return
 
     await hass.services.async_call(
         DOMAIN_INPUT_DATETIME,
@@ -273,12 +311,30 @@ async def _set_last_shot_before_soak(hass: HomeAssistant, entry: ConfigEntry) ->
         blocking=True,
     )
     _LOGGER.info(
-        "GrowAssistant Crop Steering set %s (%s) to %s for config entry %s",
+        "GrowAssistant Crop Steering mirrored %s to legacy helper %s for config entry %s",
         CONF_LAST_SHOT,
         last_shot_entity_id,
-        last_shot.isoformat(),
         entry.entry_id,
     )
+
+
+async def _clear_last_shot_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clear the managed last-shot timestamp without requiring legacy helpers."""
+    options = dict(entry.options)
+    options[CONF_LAST_SHOT] = None
+    hass.config_entries.async_update_entry(entry, options=options)
+    async_dispatcher_send(hass, f"{SIGNAL_LAST_SHOT_UPDATED}_{entry.entry_id}")
+    _LOGGER.info(
+        "GrowAssistant Crop Steering cleared managed %s for config entry %s",
+        CONF_LAST_SHOT,
+        entry.entry_id,
+    )
+
+    if _legacy_input_datetime_entity_id(entry, CONF_LAST_SHOT) is not None:
+        _LOGGER.info(
+            "GrowAssistant Crop Steering skipped clearing legacy %s because input_datetime helpers cannot be emptied reliably",
+            CONF_LAST_SHOT,
+        )
 
 
 async def _call_helper_service(
@@ -320,6 +376,17 @@ def _legacy_counter_entity_id(entry: ConfigEntry, config_key: str) -> str | None
 
 def _legacy_input_boolean_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
     """Return a legacy input_boolean helper entity id if one is configured."""
+    entity_id = entry.data.get(config_key)
+    if isinstance(entity_id, str) and entity_id.strip():
+        return entity_id
+
+    return None
+
+
+def _legacy_input_datetime_entity_id(
+    entry: ConfigEntry, config_key: str
+) -> str | None:
+    """Return a legacy input_datetime helper entity id if one is configured."""
     entity_id = entry.data.get(config_key)
     if isinstance(entity_id, str) and entity_id.strip():
         return entity_id

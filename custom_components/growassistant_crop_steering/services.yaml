@@ -8,9 +8,23 @@ reset_cycle:
 start_p1:
   name: Start P1
   description: >-
-    Turn on managed P1 state switches, backdate the last-shot helper, and mirror
-    P1 switch changes to legacy input_boolean helpers when present. This service
-    does not turn on the pump.
+    Turn on managed P1 state switches, backdate the integration-managed last-shot
+    timestamp, mirror it to a legacy input_datetime helper when configured, and
+    mirror P1 switch changes to legacy input_boolean helpers when present. This
+    service does not turn on the pump.
+
+set_last_shot_now:
+  name: Set last shot now
+  description: >-
+    Set the integration-managed last-shot timestamp to now and mirror it to a
+    legacy input_datetime helper when one is configured.
+
+clear_last_shot:
+  name: Clear last shot
+  description: >-
+    Clear the integration-managed last-shot timestamp. Legacy input_datetime
+    helpers are left unchanged because Home Assistant input_datetime helpers
+    cannot be emptied reliably.
 
 stop_pump:
   name: Stop pump

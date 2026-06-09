@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Set up GrowAssistant – Crop Steering",
-        "description": "Select the existing Home Assistant entities GrowAssistant will use. Numeric settings and shot counters are created automatically as editable number entities. Pump control is not implemented in v0.1.",
+        "description": "Select the existing Home Assistant entities GrowAssistant will use. Numeric settings, shot counters, P1 state flags, and the last shot timestamp are managed automatically by the integration. Pump control is not implemented in v0.1.",
         "data": {
           "name": "Name",
           "pump_switch": "Pump switch or test helper",
@@ -18,8 +18,7 @@
           "p1_done": "P1 done",
           "p1_window_opened_today": "P1 window opened today",
           "p1_shots_done": "P1 shots done",
-          "p2_shots_done": "P2 shots done",
-          "last_shot": "Last shot time"
+          "p2_shots_done": "P2 shots done"
         },
         "data_description": {
           "name": "Display name for this GrowAssistant instance.",
@@ -35,8 +34,7 @@
           "p1_done": "Input boolean helper that tracks whether P1 has completed for the day.",
           "p1_window_opened_today": "Input boolean helper that tracks whether the P1 window opened today.",
           "p1_shots_done": "Optional legacy counter helper that tracks completed P1 shots. New installs use the managed number entity.",
-          "p2_shots_done": "Optional legacy counter helper that tracks completed P2 shots. New installs use the managed number entity.",
-          "last_shot": "Input datetime helper for the last irrigation shot timestamp."
+          "p2_shots_done": "Optional legacy counter helper that tracks completed P2 shots. New installs use the managed number entity."
         }
       }
     },
@@ -71,6 +69,9 @@
       },
       "block_reason": {
         "name": "Block Reason"
+      },
+      "last_shot": {
+        "name": "Last Shot"
       }
     },
     "number": {
@@ -151,11 +152,19 @@
     },
     "start_p1": {
       "name": "Start P1",
-      "description": "Turn on managed P1 state switches and backdate the last-shot helper so existing Home Assistant automation logic can allow the first P1 shot."
+      "description": "Turn on managed P1 state switches and backdate the integration-managed last-shot timestamp so existing Home Assistant automation logic can allow the first P1 shot."
     },
     "stop_pump": {
       "name": "Stop pump",
       "description": "Turn off only the configured pump switch or input_boolean test helper as an explicit manual/safety stop."
+    },
+    "set_last_shot_now": {
+      "name": "Set last shot now",
+      "description": "Set the integration-managed last-shot timestamp to now and mirror it to a legacy input_datetime helper when one is configured."
+    },
+    "clear_last_shot": {
+      "name": "Clear last shot",
+      "description": "Clear the integration-managed last-shot timestamp. Legacy input_datetime helpers are left unchanged because Home Assistant input_datetime helpers cannot be emptied reliably."
     }
   },
   "selector": {
