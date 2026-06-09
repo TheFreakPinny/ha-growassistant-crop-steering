@@ -137,7 +137,7 @@ def _normalize_vwc_sensors(config_value: Any) -> list[str]:
     return []
 
 
-def _get_average_vwc_state(
+def _calculate_vwc_state(
     hass: HomeAssistant,
     config_value: Any,
 ) -> dict[str, Any]:
@@ -156,16 +156,19 @@ def _get_average_vwc_state(
             continue
 
     vwc_valid_count = len(vwc_values)
-    vwc_average = (
-        sum(vwc_values.values()) / vwc_valid_count if vwc_valid_count else None
-    )
+    if vwc_valid_count == 1:
+        vwc = next(iter(vwc_values.values()))
+    elif vwc_valid_count > 1:
+        vwc = sum(vwc_values.values()) / vwc_valid_count
+    else:
+        vwc = None
 
     return {
-        "vwc": vwc_average,
+        "vwc": vwc,
         "vwc_sensors": vwc_sensors,
         "vwc_values": vwc_values,
         "vwc_valid_count": vwc_valid_count,
-        "vwc_average": vwc_average,
+        "vwc_average": vwc,
     }
 
 
@@ -508,7 +511,7 @@ def _calculate_block_reason(
     missing_entities = list(phase_attributes.get("missing_entities", []))
     _collect_missing_required_entities(hass, entry, missing_entities)
 
-    vwc_state = _get_average_vwc_state(hass, entry.data.get(CONF_VWC_SENSOR))
+    vwc_state = _calculate_vwc_state(hass, entry.data.get(CONF_VWC_SENSOR))
     vwc = vwc_state["vwc"]
     p1_mode = _configured_mode(entry, CONF_P1_MODE, MODE_SENSOR)
     p2_mode = _configured_mode(entry, CONF_P2_MODE, MODE_SENSOR)
@@ -715,7 +718,7 @@ def _collect_missing_required_entities(
                 missing_entities.append(key)
                 continue
 
-            vwc_state = _get_average_vwc_state(hass, entity_id)
+            vwc_state = _calculate_vwc_state(hass, entity_id)
             if vwc_state["vwc_valid_count"] == 0:
                 missing_entities.extend(vwc_sensors)
             continue
