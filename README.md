@@ -51,7 +51,14 @@ growassistant_crop_steering
 
 ## Required existing Home Assistant helpers/entities
 
-GrowAssistant – Crop Steering v0.1 does not create or manage the irrigation helpers for you. Create the needed Home Assistant helpers/entities first, then select them in the integration config flow.
+GrowAssistant – Crop Steering v0.1 does not create or manage most irrigation helpers for you. Create the needed Home Assistant helpers/entities first, then select them in the integration config flow. P1/P2 steering modes are configured directly during integration setup; no `input_select` helpers are required for those modes.
+
+During setup, choose each mode as either:
+
+- `sensor` — sensor-controlled steering logic.
+- `manual` — interval/manual schedule controlled behavior.
+
+Changing P1/P2 modes after setup may require reconfiguring the integration until an Options Flow is added.
 
 ### Required
 
@@ -74,10 +81,6 @@ GrowAssistant – Crop Steering v0.1 does not create or manage the irrigation he
   - `Date and time` helpers may work, but they are not recommended for LED sunrise/sunset because only the time-of-day schedule is expected.
   - The integration calculates LED day/night state, seconds since light-on, and seconds until light-off from the configured sunrise/sunset helpers. No external LED day binary sensor is required.
   - Fixed schedules that cross midnight, such as `19:00:00` to `07:00:00`, are supported.
-- **P1 mode input_select** (`input_select`)
-  - Stores the P1 steering mode.
-- **P2 mode input_select** (`input_select`)
-  - Stores the P2 steering mode.
 - **P0 transpiration minutes input_number** (`input_number`)
   - Minimum P0 transpiration duration.
 - **P1 duration minutes input_number** (`input_number`)

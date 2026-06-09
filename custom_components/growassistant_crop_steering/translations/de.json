@@ -45,8 +45,8 @@
           "drain_tray_sensor": "Optionaler Binärsensor, der ein Leck oder einen Hochwasserzustand in der Drainagewanne anzeigt.",
           "led_sunrise": "Input-datetime-Helfer für die Sonnenaufgangs- oder Startzeit der Pflanzenbeleuchtung. Erstelle diesen Helfer als Nur Uhrzeit; Datum und Uhrzeit kann funktionieren, wird aber nicht empfohlen. Beispiel Lichtstart: 19:00:00. Zeitpläne über Mitternacht werden unterstützt.",
           "led_sunset": "Input-datetime-Helfer für die Sonnenuntergangs- oder Endzeit der Pflanzenbeleuchtung. Erstelle diesen Helfer als Nur Uhrzeit; Datum und Uhrzeit kann funktionieren, wird aber nicht empfohlen. Beispiel Lichtende: 07:00:00. Zeitpläne über Mitternacht werden unterstützt.",
-          "p1_mode": "Input-select-Helfer, der den P1-Steuerungsmodus speichert.",
-          "p2_mode": "Input-select-Helfer, der den P2-Steuerungsmodus speichert.",
+          "p1_mode": "Wähle, ob P1 sensor-gesteuert oder manuell / intervall-gesteuert läuft. Es ist kein input_select-Helfer erforderlich.",
+          "p2_mode": "Wähle, ob P2 sensor-gesteuert oder manuell / intervall-gesteuert läuft. Es ist kein input_select-Helfer erforderlich.",
           "p0_transpiration_min": "Input-number-Helfer für die minimale P0-Transpirationsdauer in Minuten.",
           "p1_duration_min": "Input-number-Helfer für die P1-Fensterdauer in Minuten.",
           "p1_interval_min": "Optionaler Input-number-Helfer für das P1-Bewässerungsintervall in Minuten.",
@@ -118,6 +118,20 @@
     "stop_pump": {
       "name": "Pumpe stoppen",
       "description": "Schaltet nur den konfigurierten Pumpenschalter oder input_boolean-Testhelfer als expliziten manuellen/Sicherheitsstopp aus."
+    }
+  },
+  "selector": {
+    "p1_mode": {
+      "options": {
+        "sensor": "Sensor-gesteuert",
+        "manual": "Manuell / Intervall-gesteuert"
+      }
+    },
+    "p2_mode": {
+      "options": {
+        "sensor": "Sensor-gesteuert",
+        "manual": "Manuell / Intervall-gesteuert"
+      }
     }
   }
 }

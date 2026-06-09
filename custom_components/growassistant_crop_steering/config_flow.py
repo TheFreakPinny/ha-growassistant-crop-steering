@@ -12,7 +12,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from .const import (
-    CONFIG_ENTITY_KEYS,
+    CONFIG_ENTRY_KEYS,
     CONF_DRAIN_SENSOR,
     CONF_DRAIN_TRAY_SENSOR,
     CONF_FIELD_CAPACITY_VWC,
@@ -45,6 +45,8 @@ from .const import (
     CONF_VWC_SENSOR,
     DEFAULT_NAME,
     DOMAIN,
+    MODE_OPTIONS,
+    MODE_SENSOR,
 )
 
 _REQUIRED_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
@@ -52,8 +54,6 @@ _REQUIRED_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
     (CONF_VWC_SENSOR, "sensor"),
     (CONF_LED_SUNRISE, "input_datetime"),
     (CONF_LED_SUNSET, "input_datetime"),
-    (CONF_P1_MODE, "input_select"),
-    (CONF_P2_MODE, "input_select"),
     (CONF_P0_TRANSPIRATION_MIN, "input_number"),
     (CONF_P1_DURATION_MIN, "input_number"),
     (CONF_P1_SHOT_DURATION_S, "input_number"),
@@ -84,6 +84,15 @@ _OPTIONAL_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
 )
 
 
+def _mode_selector() -> selector.SelectSelector:
+    """Return a fixed P1/P2 mode selector."""
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=list(MODE_OPTIONS),
+        )
+    )
+
+
 def _entity_selector(
     domain: str | list[str],
     *,
@@ -104,6 +113,9 @@ def _data_schema() -> vol.Schema:
             domain,
             multiple=config_key == CONF_VWC_SENSOR,
         )
+
+    schema[vol.Required(CONF_P1_MODE, default=MODE_SENSOR)] = _mode_selector()
+    schema[vol.Required(CONF_P2_MODE, default=MODE_SENSOR)] = _mode_selector()
 
     for config_key, domain in _OPTIONAL_ENTITY_FIELDS:
         schema[vol.Optional(config_key)] = _entity_selector(domain)
@@ -129,7 +141,7 @@ class GrowAssistantCropSteeringConfigFlow(config_entries.ConfigFlow, domain=DOMA
                 title=name,
                 data={
                     CONF_NAME: name,
-                    **{key: user_input.get(key) for key in CONFIG_ENTITY_KEYS},
+                    **{key: user_input.get(key) for key in CONFIG_ENTRY_KEYS},
                 },
             )
 
