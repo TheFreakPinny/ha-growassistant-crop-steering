@@ -20,6 +20,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -60,8 +61,10 @@ from .const import (
     MODE_MANUAL,
     MODE_OPTIONS,
     MODE_SENSOR,
+    SIGNAL_LAST_SHOT_UPDATED,
     VERSION,
 )
+
 
 _PHASE_OFF = "off"
 _PHASE_PRE_ON = "pre_on"
@@ -76,7 +79,6 @@ _REQUIRED_BLOCK_REASON_KEYS = (
     CONF_VWC_SENSOR,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
-    CONF_LAST_SHOT,
 )
 
 _STATUS_SENSOR = SensorEntityDescription(
@@ -113,6 +115,13 @@ _BLOCK_REASON_SENSOR = SensorEntityDescription(
     key="block_reason",
     translation_key="block_reason",
     icon="mdi:information-outline",
+)
+
+_LAST_SHOT_SENSOR = SensorEntityDescription(
+    key=CONF_LAST_SHOT,
+    translation_key="last_shot",
+    device_class=SensorDeviceClass.TIMESTAMP,
+    icon="mdi:clock-outline",
 )
 
 _UNAVAILABLE_STATES = {None, "", STATE_UNAVAILABLE, STATE_UNKNOWN}
@@ -174,6 +183,7 @@ async def async_setup_entry(
         [
             GrowAssistantStatusSensor(entry),
             GrowAssistantPhaseSensor(hass, entry),
+            GrowAssistantLastShotSensor(hass, entry),
             GrowAssistantSoakRemainingSensor(
                 hass,
                 entry,
@@ -240,6 +250,44 @@ class GrowAssistantPhaseSensor(SensorEntity):
         return _calculate_phase(self.hass, self._entry)[1]
 
 
+class GrowAssistantLastShotSensor(SensorEntity):
+    """Expose the integration-managed last-shot timestamp."""
+
+    entity_description = _LAST_SHOT_SENSOR
+    _attr_has_entity_name = True
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the last shot sensor."""
+        self.hass = hass
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_last_shot"
+        self._attr_device_info = _device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to managed last-shot updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_LAST_SHOT_UPDATED}_{self._entry.entry_id}",
+                self.async_write_ha_state,
+            )
+        )
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the managed or legacy last-shot timestamp."""
+        return _get_last_shot_datetime(self.hass, self._entry)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return last-shot source diagnostics."""
+        last_shot, source = _get_last_shot_datetime_with_source(self.hass, self._entry)
+        return {
+            "source": source,
+            "last_shot": last_shot.isoformat() if last_shot is not None else None,
+        }
+
+
 class GrowAssistantSoakRemainingSensor(SensorEntity):
     """Count down soak time remaining for an active crop steering phase."""
 
@@ -261,6 +309,16 @@ class GrowAssistantSoakRemainingSensor(SensorEntity):
         self._active_phase = active_phase
         self._attr_unique_id = f"{entry.entry_id}_{entity_description.key}"
         self._attr_device_info = _device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to managed last-shot updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_LAST_SHOT_UPDATED}_{self._entry.entry_id}",
+                self.async_write_ha_state,
+            )
+        )
 
     @property
     def native_value(self) -> int:
@@ -301,6 +359,16 @@ class GrowAssistantBlockReasonSensor(SensorEntity):
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_block_reason"
         self._attr_device_info = _device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to managed last-shot updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_LAST_SHOT_UPDATED}_{self._entry.entry_id}",
+                self.async_write_ha_state,
+            )
+        )
 
     @property
     def native_value(self) -> str:
@@ -475,7 +543,7 @@ def _calculate_soak_remaining(
     """Calculate soak countdown state and attributes."""
     phase = _calculate_phase(hass, entry)[0]
     soak_s = _get_soak_seconds(hass, entry, soak_config_key)
-    last_shot = _get_datetime_state(hass, entry.data.get(CONF_LAST_SHOT))
+    last_shot = _get_last_shot_datetime(hass, entry)
     active = phase == active_phase
     elapsed_s = None
     remaining_s = 0
@@ -912,6 +980,44 @@ def _get_soak_seconds(hass: HomeAssistant, entry: ConfigEntry, config_key: str) 
     soak_min = _get_numeric_state(hass, entry, config_key, [])
     soak_s = _minutes_to_seconds(soak_min)
     return _DEFAULT_SOAK_SECONDS if soak_s is None else soak_s
+
+
+def _get_last_shot_datetime(hass: HomeAssistant, entry: ConfigEntry) -> datetime | None:
+    """Return managed last-shot timestamp, falling back to a legacy helper."""
+    last_shot, _source = _get_last_shot_datetime_with_source(hass, entry)
+    return last_shot
+
+
+def _get_last_shot_datetime_with_source(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> tuple[datetime | None, str | None]:
+    """Return last-shot timestamp and whether it came from managed or legacy storage."""
+    if CONF_LAST_SHOT in entry.options:
+        return _parse_managed_datetime(entry.options.get(CONF_LAST_SHOT)), "managed"
+
+    entity_id = entry.data.get(CONF_LAST_SHOT)
+    if isinstance(entity_id, str) and entity_id:
+        return _get_datetime_state(hass, entity_id), "legacy"
+
+    return None, None
+
+
+def _parse_managed_datetime(value: Any) -> datetime | None:
+    """Parse a managed ISO datetime from config entry options."""
+    if not isinstance(value, str) or not value:
+        return None
+
+    parsed = dt_util.parse_datetime(value)
+    if parsed is None:
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+
+    return parsed
 
 
 def _get_datetime_state(hass: HomeAssistant, entity_id: str | None) -> datetime | None:

@@ -51,7 +51,7 @@ growassistant_crop_steering
 
 ## Required existing Home Assistant helpers/entities
 
-GrowAssistant – Crop Steering creates editable Home Assistant **number entities** for numeric crop steering settings and completed shot counters. New users do **not** need to create numeric `input_number` helpers manually for P0/P1/P2/VWC settings, and they do **not** need to create `counter` helpers manually for P1/P2 shots done. Existing setups that already selected `input_number` or shot counter helpers remain supported for migration and backward compatibility; when no managed number value has been changed yet, the integration can still fall back to those legacy helper values.
+GrowAssistant – Crop Steering creates editable Home Assistant **number entities** for numeric crop steering settings and completed shot counters, editable **switch entities** for P1 state flags, and an integration-managed **Last Shot** timestamp sensor. New users do **not** need to create numeric `input_number` helpers manually for P0/P1/P2/VWC settings, `counter` helpers manually for P1/P2 shots done, `input_boolean` helpers for P1 state flags, or an `input_datetime` helper for the last shot timestamp. Existing setups that already selected legacy helpers remain supported for migration and backward compatibility; when no managed value has been stored yet, the integration can still fall back to those legacy helper values.
 
 P1/P2 steering modes are configured directly during integration setup; no `input_select` helpers are required for those modes. During setup, choose each mode as either:
 
@@ -83,8 +83,7 @@ After setup, P1/P2 modes can be changed from the integration options without del
   - Fixed schedules that cross midnight, such as `19:00:00` to `07:00:00`, are supported.
 - P1 state flags are created by the integration as editable switch entities, so new users do **not** need to manually create `input_boolean` helpers for P1 active/done/window state.
 - P1/P2 completed shot counters are created by the integration as editable number entities, so new users do **not** need to manually create `counter` helpers for P1/P2 shots done.
-- **Last shot time** (`input_datetime`)
-  - Stores the last irrigation shot timestamp.
+- The last irrigation shot timestamp is stored by the integration and exposed as the **Last Shot** sensor, so new users do **not** need to manually create an `input_datetime` helper for last shot time.
 
 ### Integration-managed P1 state switches
 
@@ -125,6 +124,12 @@ The integration creates editable number entities for these settings and counters
 
 Managed shot counters default to `0`, use the `shots` unit, and can be edited from Home Assistant like the other integration-managed number entities. Legacy `counter` helpers for **P1 shots done** and **P2 shots done** remain supported for existing config entries; diagnostic sensors prefer the managed number values and fall back to legacy counters only when no managed value is stored.
 
+### Integration-managed last shot timestamp
+
+The integration stores the last irrigation shot timestamp in the config entry options and exposes it as **Last Shot** (`sensor.growassistant_crop_steering_last_shot`). New installations do **not** need a separate `input_datetime` helper for last shot time. Soak countdown and block-reason diagnostics prefer the managed timestamp and fall back to a legacy configured `input_datetime` helper only for existing config entries that do not yet have a managed timestamp.
+
+Use `growassistant_crop_steering.set_last_shot_now` from external automations after a completed shot, or use the optional blueprint, to keep the managed timestamp current.
+
 ### Optional
 
 - **Drain binary sensor** (`binary_sensor`)
@@ -143,6 +148,8 @@ Managed shot counters default to `0`, use the `shots` unit, and can be edited fr
   - Reports remaining P1 soak time in seconds.
 - **P2 Soak Remaining**
   - Reports remaining P2 soak time in seconds.
+- **Last Shot**
+  - Reports the integration-managed last irrigation shot timestamp as a timestamp sensor, or falls back to a legacy configured `input_datetime` helper for existing setups until a managed value is stored.
 - **Block Reason**
   - Reports a short diagnostic reason describing the current irrigation state and why a P1/P2 shot would or would not be allowed.
 
@@ -172,9 +179,17 @@ Prepares helper state so existing Home Assistant YAML/automation logic can begin
 - Turns on the managed **P1 Window Opened Today** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
 - Turns off the managed **P1 Done** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
 - Sets the managed **P2 Reference VWC** number entity to `0` and mirrors that value to a legacy configured `input_number` helper when present.
-- Sets the configured **Last shot** input datetime to the current time minus **P1 soak minutes** minus one second, allowing external logic that checks soak time to permit the first P1 shot.
+- Sets the managed **Last Shot** timestamp to the current time minus **P1 soak minutes** minus one second, allowing external logic that checks soak time to permit the first P1 shot. If a legacy `input_datetime` helper is configured, the service mirrors the same timestamp to it.
 
 This service does **not** turn on the pump.
+
+### `growassistant_crop_steering.set_last_shot_now`
+
+Sets the integration-managed **Last Shot** timestamp to the current time. If an existing config entry has a legacy `input_datetime` helper configured, the service mirrors the timestamp to that helper. This is useful for external automations after a completed irrigation shot.
+
+### `growassistant_crop_steering.clear_last_shot`
+
+Clears the integration-managed **Last Shot** timestamp. Legacy `input_datetime` helpers are left unchanged because Home Assistant input datetime helpers cannot be emptied reliably.
 
 ### `growassistant_crop_steering.stop_pump`
 
@@ -188,7 +203,7 @@ This repository includes an optional Home Assistant automation blueprint for use
 blueprints/automation/growassistant_crop_steering/shot_engine.yaml
 ```
 
-The blueprint can run conservative P1/P2 shots from the integration's diagnostic sensors and your existing helpers or managed entities. It watches the **Phase**, **P1 Soak Remaining**, and **P2 Soak Remaining** sensors, checks the configured P1/P2 state, turns the selected pump switch on for the configured shot duration, increments the matching managed shot-counter number or legacy counter helper, and sends a second delayed pump-off command as a failsafe. Existing legacy blueprint automations can still select external `counter` helpers; new automations may select the integration-managed `number` entities instead.
+The blueprint can run conservative P1/P2 shots from the integration's diagnostic sensors and your existing helpers or managed entities. It watches the **Phase**, **P1 Soak Remaining**, and **P2 Soak Remaining** sensors, checks the configured P1/P2 state, turns the selected pump switch on for the configured shot duration, increments the matching managed shot-counter number or legacy counter helper, updates the integration-managed last shot timestamp through `growassistant_crop_steering.set_last_shot_now`, and sends a second delayed pump-off command as a failsafe. Existing legacy blueprint automations can still select external `counter` helpers; new automations may select the integration-managed `number` entities instead.
 
 Native Python pump control is **not implemented yet**. The blueprint is optional and is provided only for users who intentionally choose to build a Home Assistant automation around the current diagnostic sensors and helper services. You remain responsible for confirming the selected entities, shot durations, soak timing, and counter behavior in your own Home Assistant instance.
 

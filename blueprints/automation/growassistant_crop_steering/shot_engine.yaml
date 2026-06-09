@@ -231,6 +231,7 @@ action:
                       - service: counter.increment
                         target:
                           entity_id: !input p1_shots_done_counter
+                  - service: growassistant_crop_steering.set_last_shot_now
               - sequence:
                   - delay:
                       seconds: >-
@@ -275,6 +276,7 @@ action:
                       - service: counter.increment
                         target:
                           entity_id: !input p2_shots_done_counter
+                  - service: growassistant_crop_steering.set_last_shot_now
               - sequence:
                   - delay:
                       seconds: >-

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "GrowAssistant – Crop Steering einrichten",
-        "description": "Wähle die vorhandenen Home-Assistant-Entitäten, die GrowAssistant verwenden soll. Numerische Einstellungen und Shot-Zähler werden automatisch als Number-Entitäten erstellt. Pumpensteuerung ist in v0.1 nicht implementiert.",
+        "description": "Wähle die bestehenden Home-Assistant-Entitäten aus, die GrowAssistant verwendet. Numerische Einstellungen, Shot-Zähler, P1-Statusflags und der Zeitstempel des letzten Shots werden automatisch von der Integration verwaltet. Pumpensteuerung ist in v0.1 nicht implementiert.",
         "data": {
           "name": "Name",
           "pump_switch": "Pumpenschalter oder Testhelfer",
@@ -18,8 +18,7 @@
           "p1_done": "P1 erledigt",
           "p1_window_opened_today": "P1-Fenster heute geöffnet",
           "p1_shots_done": "P1-Shots erledigt",
-          "p2_shots_done": "P2-Shots erledigt",
-          "last_shot": "Zeitpunkt des letzten Shots"
+          "p2_shots_done": "P2-Shots erledigt"
         },
         "data_description": {
           "name": "Anzeigename für diese GrowAssistant-Instanz.",
@@ -35,8 +34,7 @@
           "p1_done": "Input-boolean-Helfer, der speichert, ob P1 für den Tag abgeschlossen ist.",
           "p1_window_opened_today": "Input-boolean-Helfer, der speichert, ob das P1-Fenster heute geöffnet wurde.",
           "p1_shots_done": "Optionaler Legacy-Counter-Helfer, der erledigte P1-Shots zählt. Neue Installationen verwenden die verwaltete Number-Entität.",
-          "p2_shots_done": "Optionaler Legacy-Counter-Helfer, der erledigte P2-Shots zählt. Neue Installationen verwenden die verwaltete Number-Entität.",
-          "last_shot": "Input-datetime-Helfer für den Zeitstempel des letzten Bewässerungs-Shots."
+          "p2_shots_done": "Optionaler Legacy-Counter-Helfer, der erledigte P2-Shots zählt. Neue Installationen verwenden die verwaltete Number-Entität."
         }
       }
     },
@@ -71,6 +69,9 @@
       },
       "block_reason": {
         "name": "Blockierungsgrund"
+      },
+      "last_shot": {
+        "name": "Letzter Shot"
       }
     },
     "number": {
@@ -151,11 +152,19 @@
     },
     "start_p1": {
       "name": "P1 starten",
-      "description": "Schaltet verwaltete P1-Statusschalter ein und setzt den Letzter-Schuss-Helfer zurück, damit bestehende Home-Assistant-Automatisierungen den ersten P1-Schuss erlauben können."
+      "description": "Schaltet verwaltete P1-Statusschalter ein und setzt den integrationsverwalteten Letzter-Shot-Zeitstempel zurück, damit bestehende Home-Assistant-Automatisierungen den ersten P1-Shot erlauben können."
     },
     "stop_pump": {
       "name": "Pumpe stoppen",
       "description": "Schaltet nur den konfigurierten Pumpenschalter oder input_boolean-Testhelfer als expliziten manuellen/Sicherheitsstopp aus."
+    },
+    "set_last_shot_now": {
+      "name": "Letzten Shot auf jetzt setzen",
+      "description": "Setzt den integrationsverwalteten Letzter-Shot-Zeitstempel auf jetzt und spiegelt ihn in einen Legacy-input_datetime-Helfer, wenn einer konfiguriert ist."
+    },
+    "clear_last_shot": {
+      "name": "Letzten Shot löschen",
+      "description": "Löscht den integrationsverwalteten Letzter-Shot-Zeitstempel. Legacy-input_datetime-Helfer bleiben unverändert, weil Home-Assistant-input_datetime-Helfer nicht zuverlässig geleert werden können."
     }
   },
   "selector": {

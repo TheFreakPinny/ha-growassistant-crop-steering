@@ -15,7 +15,6 @@ from .const import (
     CONFIG_ENTRY_KEYS,
     CONF_DRAIN_SENSOR,
     CONF_DRAIN_TRAY_SENSOR,
-    CONF_LAST_SHOT,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
     CONF_P1_MODE,
@@ -33,7 +32,6 @@ _REQUIRED_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
     (CONF_VWC_SENSOR, "sensor"),
     (CONF_LED_SUNRISE, "input_datetime"),
     (CONF_LED_SUNSET, "input_datetime"),
-    (CONF_LAST_SHOT, "input_datetime"),
 )
 
 _OPTIONAL_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
