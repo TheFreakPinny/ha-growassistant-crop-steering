@@ -1,14 +1,15 @@
 reset_cycle:
   name: Reset cycle
   description: >-
-    Reset daily/cycle state helpers for the configured GrowAssistant crop
-    steering entry without touching the configured pump switch or input_boolean test helper.
+    Reset managed P1 state switches and daily/cycle helpers for the configured
+    GrowAssistant crop steering entry without touching the configured pump switch
+    or input_boolean test helper.
 
 start_p1:
   name: Start P1
   description: >-
-    Prepare P1 state helpers and backdate the last-shot helper so existing
-    Home Assistant automation logic can allow the first P1 shot. This service
+    Turn on managed P1 state switches, backdate the last-shot helper, and mirror
+    P1 switch changes to legacy input_boolean helpers when present. This service
     does not turn on the pump.
 
 stop_pump:

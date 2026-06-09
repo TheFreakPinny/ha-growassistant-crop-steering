@@ -81,18 +81,26 @@ After setup, P1/P2 modes can be changed from the integration options without del
   - `Date and time` helpers may work, but they are not recommended for LED sunrise/sunset because only the time-of-day schedule is expected.
   - The integration calculates LED day/night state, seconds since light-on, and seconds until light-off from the configured sunrise/sunset helpers. No external LED day binary sensor is required.
   - Fixed schedules that cross midnight, such as `19:00:00` to `07:00:00`, are supported.
-- **P1 active** (`input_boolean`)
-  - Tracks whether P1 is currently active.
-- **P1 done** (`input_boolean`)
-  - Tracks whether P1 has completed for the day.
-- **P1 window opened today** (`input_boolean`)
-  - Tracks whether the P1 window opened today.
+- P1 state flags are created by the integration as editable switch entities, so new users do **not** need to manually create `input_boolean` helpers for P1 active/done/window state.
 - **P1 shots done** (`counter`)
   - Tracks completed P1 shots.
 - **P2 shots done** (`counter`)
   - Tracks completed P2 shots.
 - **Last shot time** (`input_datetime`)
   - Stores the last irrigation shot timestamp.
+
+### Integration-managed P1 state switches
+
+The integration creates editable switch entities for boolean-like P1 state flags. These states are persisted by the integration and survive Home Assistant restarts:
+
+- **P1 Active** (`switch`)
+  - Tracks whether P1 is currently active.
+- **P1 Done** (`switch`)
+  - Tracks whether P1 has completed for the day.
+- **P1 Window Opened Today** (`switch`)
+  - Tracks whether the P1 window opened today.
+
+Existing setups that configured legacy `input_boolean` helpers for these state flags remain supported for migration/backward compatibility. When a managed switch value is present, sensors prefer the integration-managed state and services mirror changes to any configured legacy `input_boolean` helper.
 
 ### Integration-managed numeric settings
 
@@ -146,9 +154,9 @@ GrowAssistant – Crop Steering provides basic read/write service helpers for ma
 
 Resets daily/cycle helper state for the configured integration entry:
 
-- Turns off the configured **P1 active** input boolean.
-- Turns off the configured **P1 done** input boolean.
-- Turns off the configured **P1 window opened today** input boolean.
+- Turns off the managed **P1 Active** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
+- Turns off the managed **P1 Done** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
+- Turns off the managed **P1 Window Opened Today** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
 - Resets the configured **P1 shots done** counter.
 - Resets the configured **P2 shots done** counter.
 - Sets the managed **P2 Reference VWC** number entity to `0` and mirrors that value to a legacy configured `input_number` helper when present.
@@ -159,9 +167,9 @@ This service does **not** touch the configured pump switch or input_boolean test
 
 Prepares helper state so existing Home Assistant YAML/automation logic can begin P1 behavior:
 
-- Turns on the configured **P1 active** input boolean.
-- Turns on the configured **P1 window opened today** input boolean.
-- Turns off the configured **P1 done** input boolean.
+- Turns on the managed **P1 Active** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
+- Turns on the managed **P1 Window Opened Today** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
+- Turns off the managed **P1 Done** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
 - Sets the managed **P2 Reference VWC** number entity to `0` and mirrors that value to a legacy configured `input_number` helper when present.
 - Sets the configured **Last shot** input datetime to the current time minus **P1 soak minutes** minus one second, allowing external logic that checks soak time to permit the first P1 shot.
 
