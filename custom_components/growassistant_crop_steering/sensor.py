@@ -24,7 +24,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONFIG_ENTITY_KEYS,
+    CONFIG_ENTRY_KEYS,
     CONF_LAST_SHOT,
     CONF_LED_DAY_SENSOR,
     CONF_LED_SUNRISE,
@@ -53,6 +53,9 @@ from .const import (
     CONF_VWC_SENSOR,
     DEFAULT_NAME,
     DOMAIN,
+    MODE_MANUAL,
+    MODE_OPTIONS,
+    MODE_SENSOR,
     VERSION,
 )
 
@@ -63,15 +66,12 @@ _PHASE_P1_MORNING = "p1_morning"
 _PHASE_P2_MIDDAY = "p2_midday"
 _PHASE_P3_DRYBACK = "p3_dryback"
 
-_MODE_MANUAL = "manual"
 _DEFAULT_SOAK_SECONDS = 5 * 60
 
 _REQUIRED_BLOCK_REASON_KEYS = (
     CONF_VWC_SENSOR,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
-    CONF_P1_MODE,
-    CONF_P2_MODE,
     CONF_P1_ACTIVE,
     CONF_P1_DONE,
     CONF_P1_WINDOW_OPENED_TODAY,
@@ -217,8 +217,8 @@ class GrowAssistantStatusSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return selected Home Assistant entities for the scaffold."""
-        return {key: self._entry.data.get(key) for key in CONFIG_ENTITY_KEYS}
+        """Return selected entities and configured setup options for diagnostics."""
+        return {key: self._entry.data.get(key) for key in CONFIG_ENTRY_KEYS}
 
 
 class GrowAssistantPhaseSensor(SensorEntity):
@@ -318,6 +318,15 @@ class GrowAssistantBlockReasonSensor(SensorEntity):
         return _calculate_block_reason(self.hass, self._entry)[1]
 
 
+def _configured_mode(entry: ConfigEntry, config_key: str, default: str) -> str:
+    """Return a configured P1/P2 mode value, falling back to a safe default."""
+    mode = entry.data.get(config_key, default)
+    if isinstance(mode, str) and mode.lower() in MODE_OPTIONS:
+        return mode.lower()
+
+    return default
+
+
 def _calculate_phase(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -361,11 +370,8 @@ def _calculate_phase(
         )
     )
 
-    p1_mode = _get_text_state(
-        hass,
-        entry.data.get(CONF_P1_MODE),
-        missing_entities,
-    )
+    p1_mode = _configured_mode(entry, CONF_P1_MODE, MODE_SENSOR)
+    p2_mode = _configured_mode(entry, CONF_P2_MODE, MODE_SENSOR)
 
     p1_active = _get_bool_state(
         hass,
@@ -416,6 +422,7 @@ def _calculate_phase(
         "p2_time_ok": p2_time_ok,
         "missing_entities": missing_entities,
         "p1_mode": p1_mode,
+        "p2_mode": p2_mode,
         "p1_active": p1_active,
         "p1_done": p1_done,
     }
@@ -444,7 +451,7 @@ def _calculate_phase(
     p2_available = p2_target_value > 0 and p2_shots_left > 0 and p2_time_ok
     p1_mode_value = (p1_mode or "").lower()
 
-    if p1_mode_value == _MODE_MANUAL:
+    if p1_mode_value == MODE_MANUAL:
         if since_on_s < p0_s + p1_s:
             return _PHASE_P1_MORNING, debug_attributes
 
@@ -502,16 +509,8 @@ def _calculate_block_reason(
 
     vwc_state = _get_average_vwc_state(hass, entry.data.get(CONF_VWC_SENSOR))
     vwc = vwc_state["vwc"]
-    p1_mode = _get_text_state(
-        hass,
-        entry.data.get(CONF_P1_MODE),
-        missing_entities,
-    )
-    p2_mode = _get_text_state(
-        hass,
-        entry.data.get(CONF_P2_MODE),
-        missing_entities,
-    )
+    p1_mode = _configured_mode(entry, CONF_P1_MODE, MODE_SENSOR)
+    p2_mode = _configured_mode(entry, CONF_P2_MODE, MODE_SENSOR)
     p1_start_vwc = _get_float_state(
         hass,
         entry.data.get(CONF_P1_START_VWC),
@@ -618,7 +617,7 @@ def _calculate_block_reason(
 
     if phase == _PHASE_P3_DRYBACK:
         if phase_attributes.get("led_day"):
-            if p2_mode_value == _MODE_MANUAL:
+            if p2_mode_value == MODE_MANUAL:
                 return "P2 blocked: mode is manual", attributes
 
             if p2_ref_vwc is None or p2_ref_vwc <= 0:
@@ -649,7 +648,7 @@ def _calculate_block_reason(
         return "P0 transpiration active", attributes
 
     if phase == _PHASE_P1_MORNING:
-        if p1_mode_value == _MODE_MANUAL:
+        if p1_mode_value == MODE_MANUAL:
             return "P1 blocked: mode is manual", attributes
 
         if p1_soak_remaining_s > 0:
@@ -671,7 +670,7 @@ def _calculate_block_reason(
         return "P1 ready", attributes
 
     if phase == _PHASE_P2_MIDDAY:
-        if p2_mode_value == _MODE_MANUAL:
+        if p2_mode_value == MODE_MANUAL:
             return "P2 blocked: mode is manual", attributes
 
         if p2_ref_vwc is None or p2_ref_vwc <= 0:
