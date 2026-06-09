@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.2 - 2026-06-09
+
+### Added
+
+- P1 and P2 steering modes are now configured directly in the integration.
+- Added options flow so P1/P2 modes can be changed after setup.
+- Added integration-managed number entities for numeric crop steering settings.
+- Added managed P1 Shots numeric setting.
+
+### Changed
+
+- Removed the need for external `input_select` helpers for P1/P2 mode.
+- New users no longer need to manually create `input_number` helpers for P0/P1/P2/VWC settings.
+- Numeric settings are editable directly from the Home Assistant UI.
+
+### Compatibility
+
+- Existing `input_number` helper based setups remain supported for migration/backward compatibility.
+
 ## v0.1.0 - 2026-06-08
 
 Initial public release of GrowAssistant – Crop Steering for Home Assistant.
