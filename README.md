@@ -51,7 +51,7 @@ growassistant_crop_steering
 
 ## Required existing Home Assistant helpers/entities
 
-GrowAssistant – Crop Steering creates editable Home Assistant **number entities** for numeric crop steering settings. New users do **not** need to create numeric `input_number` helpers manually for P0/P1/P2/VWC settings. Existing setups that already selected `input_number` helpers remain supported for migration and backward compatibility; when no managed number value has been changed yet, the integration can still fall back to those legacy helper values.
+GrowAssistant – Crop Steering creates editable Home Assistant **number entities** for numeric crop steering settings and completed shot counters. New users do **not** need to create numeric `input_number` helpers manually for P0/P1/P2/VWC settings, and they do **not** need to create `counter` helpers manually for P1/P2 shots done. Existing setups that already selected `input_number` or shot counter helpers remain supported for migration and backward compatibility; when no managed number value has been changed yet, the integration can still fall back to those legacy helper values.
 
 P1/P2 steering modes are configured directly during integration setup; no `input_select` helpers are required for those modes. During setup, choose each mode as either:
 
@@ -82,10 +82,7 @@ After setup, P1/P2 modes can be changed from the integration options without del
   - The integration calculates LED day/night state, seconds since light-on, and seconds until light-off from the configured sunrise/sunset helpers. No external LED day binary sensor is required.
   - Fixed schedules that cross midnight, such as `19:00:00` to `07:00:00`, are supported.
 - P1 state flags are created by the integration as editable switch entities, so new users do **not** need to manually create `input_boolean` helpers for P1 active/done/window state.
-- **P1 shots done** (`counter`)
-  - Tracks completed P1 shots.
-- **P2 shots done** (`counter`)
-  - Tracks completed P2 shots.
+- P1/P2 completed shot counters are created by the integration as editable number entities, so new users do **not** need to manually create `counter` helpers for P1/P2 shots done.
 - **Last shot time** (`input_datetime`)
   - Stores the last irrigation shot timestamp.
 
@@ -102,9 +99,9 @@ The integration creates editable switch entities for boolean-like P1 state flags
 
 Existing setups that configured legacy `input_boolean` helpers for these state flags remain supported for migration/backward compatibility. When a managed switch value is present, sensors prefer the integration-managed state and services mirror changes to any configured legacy `input_boolean` helper.
 
-### Integration-managed numeric settings
+### Integration-managed numeric settings and shot counters
 
-The integration creates editable number entities for these settings:
+The integration creates editable number entities for these settings and counters:
 
 - **P0 Transpiration**
 - **P1 Duration**
@@ -113,16 +110,20 @@ The integration creates editable number entities for these settings:
 - **P1 Soak**
 - **P1 Start VWC**
 - **P1 Shots**
+- **P1 Shots Done**
 - **P2 Interval**
 - **P2 Shot Duration**
 - **P2 Soak**
 - **P2 Shots**
+- **P2 Shots Done**
 - **P2 End Offset**
 - **P2 VWC Drop**
 - **P2 Reference VWC**
 - **Field Capacity VWC**
 - **VWC Cap**
 - **VWC Hysteresis**
+
+Managed shot counters default to `0`, use the `shots` unit, and can be edited from Home Assistant like the other integration-managed number entities. Legacy `counter` helpers for **P1 shots done** and **P2 shots done** remain supported for existing config entries; diagnostic sensors prefer the managed number values and fall back to legacy counters only when no managed value is stored.
 
 ### Optional
 
@@ -157,8 +158,8 @@ Resets daily/cycle helper state for the configured integration entry:
 - Turns off the managed **P1 Active** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
 - Turns off the managed **P1 Done** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
 - Turns off the managed **P1 Window Opened Today** switch and mirrors the change to a legacy configured `input_boolean` helper when present.
-- Resets the configured **P1 shots done** counter.
-- Resets the configured **P2 shots done** counter.
+- Resets the managed **P1 Shots Done** number entity to `0` and also resets a legacy configured `counter` helper when present.
+- Resets the managed **P2 Shots Done** number entity to `0` and also resets a legacy configured `counter` helper when present.
 - Sets the managed **P2 Reference VWC** number entity to `0` and mirrors that value to a legacy configured `input_number` helper when present.
 
 This service does **not** touch the configured pump switch or input_boolean test helper.
@@ -187,7 +188,7 @@ This repository includes an optional Home Assistant automation blueprint for use
 blueprints/automation/growassistant_crop_steering/shot_engine.yaml
 ```
 
-The blueprint can run conservative P1/P2 shots from the integration's diagnostic sensors and your existing helpers. It watches the **Phase**, **P1 Soak Remaining**, and **P2 Soak Remaining** sensors, checks the configured P1/P2 helper state, turns the selected pump switch on for the configured shot duration, increments the matching shot counter, and sends a second delayed pump-off command as a failsafe.
+The blueprint can run conservative P1/P2 shots from the integration's diagnostic sensors and your existing helpers or managed entities. It watches the **Phase**, **P1 Soak Remaining**, and **P2 Soak Remaining** sensors, checks the configured P1/P2 state, turns the selected pump switch on for the configured shot duration, increments the matching managed shot-counter number or legacy counter helper, and sends a second delayed pump-off command as a failsafe. Existing legacy blueprint automations can still select external `counter` helpers; new automations may select the integration-managed `number` entities instead.
 
 Native Python pump control is **not implemented yet**. The blueprint is optional and is provided only for users who intentionally choose to build a Home Assistant automation around the current diagnostic sensors and helper services. You remain responsible for confirming the selected entities, shot durations, soak timing, and counter behavior in your own Home Assistant instance.
 

@@ -19,9 +19,7 @@ from .const import (
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
     CONF_P1_MODE,
-    CONF_P1_SHOTS_DONE,
     CONF_P2_MODE,
-    CONF_P2_SHOTS_DONE,
     CONF_PUMP_SWITCH,
     CONF_VWC_SENSOR,
     DEFAULT_NAME,
@@ -35,8 +33,6 @@ _REQUIRED_ENTITY_FIELDS: tuple[tuple[str, str | list[str]], ...] = (
     (CONF_VWC_SENSOR, "sensor"),
     (CONF_LED_SUNRISE, "input_datetime"),
     (CONF_LED_SUNSET, "input_datetime"),
-    (CONF_P1_SHOTS_DONE, "counter"),
-    (CONF_P2_SHOTS_DONE, "counter"),
     (CONF_LAST_SHOT, "input_datetime"),
 )
 

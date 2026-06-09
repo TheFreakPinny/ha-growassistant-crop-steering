@@ -47,6 +47,7 @@ SERVICE_TURN_OFF = "turn_off"
 SERVICE_TURN_ON = "turn_on"
 
 SIGNAL_SWITCH_STATE_UPDATED = f"{DOMAIN}_switch_state_updated"
+SIGNAL_NUMBER_STATE_UPDATED = f"{DOMAIN}_number_state_updated"
 
 ATTR_DATETIME = "datetime"
 ATTR_VALUE = "value"
@@ -116,15 +117,44 @@ async def _reset_cycle_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await _set_boolean_state(hass, entry, CONF_P1_ACTIVE, False)
     await _set_boolean_state(hass, entry, CONF_P1_DONE, False)
     await _set_boolean_state(hass, entry, CONF_P1_WINDOW_OPENED_TODAY, False)
-    await _call_helper_service(
-        hass, entry, CONF_P1_SHOTS_DONE, DOMAIN_COUNTER, SERVICE_COUNTER_RESET
-    )
-    await _call_helper_service(
-        hass, entry, CONF_P2_SHOTS_DONE, DOMAIN_COUNTER, SERVICE_COUNTER_RESET
-    )
+    await _reset_shots_done_counter(hass, entry, CONF_P1_SHOTS_DONE)
+    await _reset_shots_done_counter(hass, entry, CONF_P2_SHOTS_DONE)
     await _set_numeric_setting(hass, entry, CONF_P2_REF_VWC, 0)
     _LOGGER.info(
         "GrowAssistant Crop Steering reset_cycle completed for config entry %s",
+        entry.entry_id,
+    )
+
+
+async def _reset_shots_done_counter(
+    hass: HomeAssistant, entry: ConfigEntry, config_key: str
+) -> None:
+    """Reset a managed shot counter and a legacy counter helper if present."""
+    if config_key in NUMERIC_SETTING_DEFAULTS:
+        options = dict(entry.options)
+        options[config_key] = 0
+        hass.config_entries.async_update_entry(entry, options=options)
+        async_dispatcher_send(hass, f"{SIGNAL_NUMBER_STATE_UPDATED}_{entry.entry_id}")
+        _LOGGER.info(
+            "GrowAssistant Crop Steering reset managed shot counter %s for config entry %s",
+            config_key,
+            entry.entry_id,
+        )
+
+    entity_id = _legacy_counter_entity_id(entry, config_key)
+    if entity_id is None:
+        return
+
+    await hass.services.async_call(
+        DOMAIN_COUNTER,
+        SERVICE_COUNTER_RESET,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+    _LOGGER.info(
+        "GrowAssistant Crop Steering reset legacy shot counter %s (%s) for config entry %s",
+        config_key,
+        entity_id,
         entry.entry_id,
     )
 
@@ -197,6 +227,7 @@ async def _set_numeric_setting(
         options = dict(entry.options)
         options[config_key] = value
         hass.config_entries.async_update_entry(entry, options=options)
+        async_dispatcher_send(hass, f"{SIGNAL_NUMBER_STATE_UPDATED}_{entry.entry_id}")
         _LOGGER.info(
             "GrowAssistant Crop Steering set managed numeric setting %s to %s for config entry %s",
             config_key,
@@ -276,6 +307,15 @@ async def _call_helper_service(
         entity_id,
         entry.entry_id,
     )
+
+
+def _legacy_counter_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
+    """Return a legacy counter helper entity id if one is configured."""
+    entity_id = entry.data.get(config_key)
+    if isinstance(entity_id, str) and entity_id.strip():
+        return entity_id
+
+    return None
 
 
 def _legacy_input_boolean_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
