@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.1.3 - 2026-06-09
+
+### Added
+
+- Added integration-managed P1 state switches:
+  - P1 Active
+  - P1 Done
+  - P1 Window Opened Today
+- Added integration-managed shot counter number entities:
+  - P1 Shots Done
+  - P2 Shots Done
+- Added managed Last Shot timestamp sensor.
+- Added services:
+  - `set_last_shot_now`
+  - `clear_last_shot`
+
+### Changed
+
+- New users no longer need to manually create P1 `input_boolean` helpers.
+- New users no longer need to manually create `counter` helpers.
+- New users no longer need a `last_shot` `input_datetime` helper.
+- Optional shot engine blueprint now updates the managed Last Shot timestamp.
+
+### Compatibility
+
+- Legacy `input_boolean`, `counter`, and `last_shot` `input_datetime` helper setups remain supported as migration/backward compatibility fallback.
+
 ## v0.1.2 - 2026-06-09
 
 ### Added
