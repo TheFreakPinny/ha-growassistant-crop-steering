@@ -53,6 +53,8 @@ from .const import (
     CONF_VWC_SENSOR,
     DEFAULT_NAME,
     DOMAIN,
+    NUMERIC_SETTING_DEFAULTS,
+    NUMERIC_SETTING_KEYS,
     MODE_MANUAL,
     MODE_OPTIONS,
     MODE_SENSOR,
@@ -75,15 +77,7 @@ _REQUIRED_BLOCK_REASON_KEYS = (
     CONF_P1_ACTIVE,
     CONF_P1_DONE,
     CONF_P1_WINDOW_OPENED_TODAY,
-    CONF_P1_START_VWC,
-    CONF_FIELD_CAPACITY_VWC,
-    CONF_P1_SOAK_MIN,
-    CONF_P2_SOAK_MIN,
-    CONF_P2_SHOTS,
     CONF_P2_SHOTS_DONE,
-    CONF_P2_REF_VWC,
-    CONF_P2_VWC_DROP,
-    CONF_P2_END_OFFSET_MIN,
     CONF_LAST_SHOT,
 )
 
@@ -339,24 +333,27 @@ def _calculate_phase(
     missing_entities: list[str] = []
 
     p0_s = _minutes_to_seconds(
-        _get_float_state(
+        _get_numeric_state(
             hass,
-            entry.data.get(CONF_P0_TRANSPIRATION_MIN),
+            entry,
+            CONF_P0_TRANSPIRATION_MIN,
             missing_entities,
         )
     )
 
     p1_s = _minutes_to_seconds(
-        _get_float_state(
+        _get_numeric_state(
             hass,
-            entry.data.get(CONF_P1_DURATION_MIN),
+            entry,
+            CONF_P1_DURATION_MIN,
             missing_entities,
         )
     )
 
-    p2_target = _get_float_state(
+    p2_target = _get_numeric_state(
         hass,
-        entry.data.get(CONF_P2_SHOTS),
+        entry,
+        CONF_P2_SHOTS,
         missing_entities,
     )
 
@@ -367,9 +364,10 @@ def _calculate_phase(
     )
 
     p2_end_offset_s = _minutes_to_seconds(
-        _get_float_state(
+        _get_numeric_state(
             hass,
-            entry.data.get(CONF_P2_END_OFFSET_MIN),
+            entry,
+            CONF_P2_END_OFFSET_MIN,
             missing_entities,
         )
     )
@@ -390,8 +388,8 @@ def _calculate_phase(
     )
 
     # Optional interval helpers are read only for diagnostics / future use.
-    _get_float_state(hass, entry.data.get(CONF_P2_INTERVAL_MIN), [])
-    _get_float_state(hass, entry.data.get(CONF_P1_INTERVAL_MIN), [])
+    _get_numeric_state(hass, entry, CONF_P2_INTERVAL_MIN, [])
+    _get_numeric_state(hass, entry, CONF_P1_INTERVAL_MIN, [])
 
     timing = _light_timing(
         hass,
@@ -481,7 +479,7 @@ def _calculate_soak_remaining(
 ) -> dict[str, Any]:
     """Calculate soak countdown state and attributes."""
     phase = _calculate_phase(hass, entry)[0]
-    soak_s = _get_soak_seconds(hass, entry.data.get(soak_config_key))
+    soak_s = _get_soak_seconds(hass, entry, soak_config_key)
     last_shot = _get_datetime_state(hass, entry.data.get(CONF_LAST_SHOT))
     active = phase == active_phase
     elapsed_s = None
@@ -515,29 +513,34 @@ def _calculate_block_reason(
     vwc = vwc_state["vwc"]
     p1_mode = _configured_mode(entry, CONF_P1_MODE, MODE_SENSOR)
     p2_mode = _configured_mode(entry, CONF_P2_MODE, MODE_SENSOR)
-    p1_start_vwc = _get_float_state(
+    p1_start_vwc = _get_numeric_state(
         hass,
-        entry.data.get(CONF_P1_START_VWC),
+        entry,
+        CONF_P1_START_VWC,
         missing_entities,
     )
-    field_capacity_vwc = _get_float_state(
+    field_capacity_vwc = _get_numeric_state(
         hass,
-        entry.data.get(CONF_FIELD_CAPACITY_VWC),
+        entry,
+        CONF_FIELD_CAPACITY_VWC,
         missing_entities,
     )
-    p2_ref_vwc = _get_float_state(
+    p2_ref_vwc = _get_numeric_state(
         hass,
-        entry.data.get(CONF_P2_REF_VWC),
+        entry,
+        CONF_P2_REF_VWC,
         missing_entities,
     )
-    p2_vwc_drop = _get_float_state(
+    p2_vwc_drop = _get_numeric_state(
         hass,
-        entry.data.get(CONF_P2_VWC_DROP),
+        entry,
+        CONF_P2_VWC_DROP,
         missing_entities,
     )
-    p2_target_raw = _get_float_state(
+    p2_target_raw = _get_numeric_state(
         hass,
-        entry.data.get(CONF_P2_SHOTS),
+        entry,
+        CONF_P2_SHOTS,
         missing_entities,
     )
     p2_done_raw = _get_float_state(
@@ -545,9 +548,10 @@ def _calculate_block_reason(
         entry.data.get(CONF_P2_SHOTS_DONE),
         missing_entities,
     )
-    _get_float_state(
+    _get_numeric_state(
         hass,
-        entry.data.get(CONF_P2_END_OFFSET_MIN),
+        entry,
+        CONF_P2_END_OFFSET_MIN,
         missing_entities,
     )
 
@@ -556,7 +560,7 @@ def _calculate_block_reason(
         hass,
         entry.data.get(CONF_DRAIN_TRAY_SENSOR),
     )
-    vwc_cap = _get_optional_float_state(hass, entry.data.get(CONF_VWC_CAP))
+    vwc_cap = _get_optional_numeric_state(hass, entry, CONF_VWC_CAP)
     vwc_cap_active = vwc is not None and vwc_cap is not None and vwc >= vwc_cap
 
     p1_soak_remaining_s = _calculate_soak_remaining(
@@ -736,7 +740,7 @@ def _configured_required_entities(entry: ConfigEntry) -> set[str]:
     """Return configured required entity identifiers, flattening list values."""
     configured_required = set(_REQUIRED_BLOCK_REASON_KEYS)
 
-    for key in _REQUIRED_BLOCK_REASON_KEYS:
+    for key in (*_REQUIRED_BLOCK_REASON_KEYS, *NUMERIC_SETTING_KEYS):
         value = entry.data.get(key)
         if key == CONF_VWC_SENSOR:
             configured_required.update(_normalize_vwc_sensors(value))
@@ -830,12 +834,33 @@ def _get_optional_bool_state(hass: HomeAssistant, entity_id: str | None) -> bool
     return _get_bool_state(hass, entity_id, [])
 
 
-def _get_optional_float_state(hass: HomeAssistant, entity_id: str | None) -> float | None:
-    """Return an optional numeric state without marking it missing."""
-    if entity_id is None:
-        return None
+def _get_numeric_state(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    config_key: str,
+    missing_entities: list[str],
+) -> float | None:
+    """Return a managed numeric setting, falling back to a legacy helper."""
+    managed_value = entry.options.get(config_key)
+    if managed_value is not None:
+        try:
+            return float(managed_value)
+        except (TypeError, ValueError):
+            missing_entities.append(config_key)
+            return None
 
-    return _get_float_state(hass, entity_id, [])
+    entity_id = entry.data.get(config_key)
+    if isinstance(entity_id, str) and entity_id:
+        return _get_float_state(hass, entity_id, missing_entities)
+
+    return NUMERIC_SETTING_DEFAULTS.get(config_key)
+
+
+def _get_optional_numeric_state(
+    hass: HomeAssistant, entry: ConfigEntry, config_key: str
+) -> float | None:
+    """Return an optional managed numeric state without marking it missing."""
+    return _get_numeric_state(hass, entry, config_key, [])
 
 
 def _minutes_to_seconds(value: float | None) -> int | None:
@@ -846,9 +871,9 @@ def _minutes_to_seconds(value: float | None) -> int | None:
     return max(0, int(value * 60))
 
 
-def _get_soak_seconds(hass: HomeAssistant, entity_id: str | None) -> int:
+def _get_soak_seconds(hass: HomeAssistant, entry: ConfigEntry, config_key: str) -> int:
     """Return configured soak seconds, defaulting to five minutes if invalid."""
-    soak_min = _get_float_state(hass, entity_id, [])
+    soak_min = _get_numeric_state(hass, entry, config_key, [])
     soak_s = _minutes_to_seconds(soak_min)
     return _DEFAULT_SOAK_SECONDS if soak_s is None else soak_s
 

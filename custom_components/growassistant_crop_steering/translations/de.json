@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "GrowAssistant – Crop Steering einrichten",
-        "description": "Wähle die vorhandenen Home-Assistant-Helfer und Entitäten aus, die GrowAssistant verwenden soll. Die Pumpensteuerung ist in v0.1 noch nicht implementiert.",
+        "description": "Wähle die vorhandenen Home-Assistant-Entitäten, die GrowAssistant verwenden soll. Numerische Einstellungen werden automatisch als Number-Entitäten erstellt. Pumpensteuerung ist in v0.1 nicht implementiert.",
         "data": {
           "name": "Name",
           "pump_switch": "Pumpenschalter oder Testhelfer",
@@ -14,22 +14,6 @@
           "led_sunset": "LED-Sonnenuntergangszeit",
           "p1_mode": "P1-Modus",
           "p2_mode": "P2-Modus",
-          "p0_transpiration_min": "P0-Transpiration in Minuten",
-          "p1_duration_min": "P1-Dauer in Minuten",
-          "p1_interval_min": "P1-Intervall in Minuten",
-          "p1_shot_duration_s": "P1-Shot-Dauer in Sekunden",
-          "p2_interval_min": "P2-Intervall in Minuten",
-          "p2_shot_duration_s": "P2-Shot-Dauer in Sekunden",
-          "p2_shots": "P2-Shots",
-          "p1_soak_min": "P1-Soak in Minuten",
-          "p2_soak_min": "P2-Soak in Minuten",
-          "p2_end_offset_min": "P2-Endversatz in Minuten",
-          "field_capacity_vwc": "Feldkapazität VWC",
-          "p1_start_vwc": "P1-Start-VWC",
-          "p2_vwc_drop": "P2-VWC-Abfall",
-          "p2_ref_vwc": "P2-Referenz-VWC",
-          "vwc_cap": "VWC-Obergrenze",
-          "vwc_hyst": "VWC-Hysterese",
           "p1_active": "P1 aktiv",
           "p1_done": "P1 erledigt",
           "p1_window_opened_today": "P1-Fenster heute geöffnet",
@@ -47,22 +31,6 @@
           "led_sunset": "Input-datetime-Helfer für die Sonnenuntergangs- oder Endzeit der Pflanzenbeleuchtung. Erstelle diesen Helfer als Nur Uhrzeit; Datum und Uhrzeit kann funktionieren, wird aber nicht empfohlen. Beispiel Lichtende: 07:00:00. Zeitpläne über Mitternacht werden unterstützt.",
           "p1_mode": "Wähle, ob P1 sensor-gesteuert oder manuell / intervall-gesteuert läuft. Es ist kein input_select-Helfer erforderlich.",
           "p2_mode": "Wähle, ob P2 sensor-gesteuert oder manuell / intervall-gesteuert läuft. Es ist kein input_select-Helfer erforderlich.",
-          "p0_transpiration_min": "Input-number-Helfer für die minimale P0-Transpirationsdauer in Minuten.",
-          "p1_duration_min": "Input-number-Helfer für die P1-Fensterdauer in Minuten.",
-          "p1_interval_min": "Optionaler Input-number-Helfer für das P1-Bewässerungsintervall in Minuten.",
-          "p1_shot_duration_s": "Input-number-Helfer für die P1-Bewässerungs-Shot-Dauer in Sekunden.",
-          "p2_interval_min": "Optionaler Input-number-Helfer für das P2-Bewässerungsintervall in Minuten.",
-          "p2_shot_duration_s": "Input-number-Helfer für die P2-Bewässerungs-Shot-Dauer in Sekunden.",
-          "p2_shots": "Input-number-Helfer für die Zielanzahl der P2-Bewässerungs-Shots.",
-          "p1_soak_min": "Input-number-Helfer für die P1-Soak-Zeit in Minuten.",
-          "p2_soak_min": "Input-number-Helfer für die P2-Soak-Zeit in Minuten.",
-          "p2_end_offset_min": "Input-number-Helfer für den P2-Endversatz vor LED-Sonnenuntergang in Minuten.",
-          "field_capacity_vwc": "Input-number-Helfer für die Feldkapazität des Substrats als VWC.",
-          "p1_start_vwc": "Input-number-Helfer für den VWC-Schwellenwert, der das P1-Verhalten startet.",
-          "p2_vwc_drop": "Input-number-Helfer für den VWC-Abfallzielwert während P2.",
-          "p2_ref_vwc": "Input-number-Helfer für den P2-Referenz-VWC.",
-          "vwc_cap": "Optionaler Input-number-Helfer für die maximale VWC-Obergrenze.",
-          "vwc_hyst": "Optionaler Input-number-Helfer für die VWC-Hysterese.",
           "p1_active": "Input-boolean-Helfer, der speichert, ob P1 aktuell aktiv ist.",
           "p1_done": "Input-boolean-Helfer, der speichert, ob P1 für den Tag abgeschlossen ist.",
           "p1_window_opened_today": "Input-boolean-Helfer, der speichert, ob das P1-Fenster heute geöffnet wurde.",
@@ -103,6 +71,59 @@
       },
       "block_reason": {
         "name": "Blockierungsgrund"
+      }
+    },
+    "number": {
+      "p0_transpiration_min": {
+        "name": "P0 Transpiration"
+      },
+      "p1_duration_min": {
+        "name": "P1 Duration"
+      },
+      "p1_interval_min": {
+        "name": "P1 Interval"
+      },
+      "p1_shot_duration_s": {
+        "name": "P1 Shot Duration"
+      },
+      "p1_soak_min": {
+        "name": "P1 Soak"
+      },
+      "p1_start_vwc": {
+        "name": "P1 Start VWC"
+      },
+      "p1_shots": {
+        "name": "P1 Shots"
+      },
+      "p2_interval_min": {
+        "name": "P2 Interval"
+      },
+      "p2_shot_duration_s": {
+        "name": "P2 Shot Duration"
+      },
+      "p2_soak_min": {
+        "name": "P2 Soak"
+      },
+      "p2_shots": {
+        "name": "P2 Shots"
+      },
+      "p2_end_offset_min": {
+        "name": "P2 End Offset"
+      },
+      "p2_vwc_drop": {
+        "name": "P2 VWC Drop"
+      },
+      "p2_ref_vwc": {
+        "name": "P2 Reference VWC"
+      },
+      "field_capacity_vwc": {
+        "name": "Field Capacity VWC"
+      },
+      "vwc_cap": {
+        "name": "VWC Cap"
+      },
+      "vwc_hyst": {
+        "name": "VWC Hysteresis"
       }
     }
   },
