@@ -143,6 +143,23 @@
       "p1_window_opened_today": {
         "name": "P1-Fenster heute geöffnet"
       }
+    },
+    "button": {
+      "reset_cycle": {
+        "name": "Zyklus zurücksetzen"
+      },
+      "start_p1": {
+        "name": "P1 starten"
+      },
+      "stop_pump": {
+        "name": "Pumpe stoppen"
+      },
+      "set_last_shot_now": {
+        "name": "Letzten Shot auf jetzt setzen"
+      },
+      "clear_last_shot": {
+        "name": "Letzten Shot löschen"
+      }
     }
   },
   "services": {

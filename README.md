@@ -17,7 +17,8 @@ The integration reads existing Home Assistant helpers/entities and exposes diagn
 - UI config flow through **Settings → Devices & services**.
 - User selects existing Home Assistant helpers/entities during setup.
 - Diagnostic sensors for status, phase, P1/P2 soak countdowns, and block reason.
-- Optional helper services for resetting cycle helpers, preparing P1 helper state, and manually stopping the configured pump entity.
+- Optional helper services for resetting cycle helpers, preparing P1 helper state, updating the last-shot timestamp, and manually stopping the configured pump entity.
+- Optional Home Assistant button entities for dashboard access to the common helper services.
 - Optional shot engine blueprint for YAML-based pump orchestration outside the integration.
 - No native integration-side pump control or autonomous irrigation engine implemented yet.
 
@@ -130,6 +131,18 @@ The integration stores the last irrigation shot timestamp in the config entry op
 
 Use `growassistant_crop_steering.set_last_shot_now` from external automations after a completed shot, or use the optional blueprint, to keep the managed timestamp current.
 
+### Integration-managed service buttons
+
+The integration also creates optional button entities for common manual service actions so dashboard users can trigger them directly from Lovelace without opening Developer Tools:
+
+- **Reset Cycle** — calls `growassistant_crop_steering.reset_cycle` for this GrowAssistant config entry.
+- **Start P1** — calls `growassistant_crop_steering.start_p1` for this GrowAssistant config entry.
+- **Stop Pump** — calls `growassistant_crop_steering.stop_pump` for this GrowAssistant config entry.
+- **Set Last Shot Now** — calls `growassistant_crop_steering.set_last_shot_now` for this GrowAssistant config entry.
+- **Clear Last Shot** — calls `growassistant_crop_steering.clear_last_shot` for this GrowAssistant config entry.
+
+The underlying services remain available through **Developer Tools → Services/Actions** for advanced use, scripts, and automations.
+
 ### Optional
 
 - **Drain binary sensor** (`binary_sensor`)
@@ -156,7 +169,7 @@ Use `growassistant_crop_steering.set_last_shot_now` from external automations af
 
 ## Services
 
-GrowAssistant – Crop Steering provides basic read/write service helpers for maintenance and external automation workflows. These services update the configured Home Assistant helper entities only; they do **not** implement a full pump control loop or native irrigation shot engine. Existing YAML automations or future control logic remain responsible for deciding when shots may run.
+GrowAssistant – Crop Steering provides basic read/write service helpers for maintenance and external automation workflows. These services update the configured Home Assistant helper entities only; they do **not** implement a full pump control loop or native irrigation shot engine. Existing YAML automations or future control logic remain responsible for deciding when shots may run. The same actions are also exposed as integration-managed button entities for optional dashboard control, while the services remain available through **Developer Tools → Services/Actions**.
 
 ### `growassistant_crop_steering.reset_cycle`
 
@@ -204,7 +217,7 @@ Copy-paste Lovelace dashboard examples are available for quick setup and referen
 
 The German sections dashboard example is intended for the Home Assistant raw dashboard configuration editor because it uses a top-level `views:` key. It is not a single manual card.
 
-Entity IDs may differ depending on your Home Assistant language and entity registry. If an entity is not found, check the GrowAssistant device page in Home Assistant for the entity IDs created in your instance.
+Entity IDs may differ depending on your Home Assistant language and entity registry, including the integration-managed service button entity IDs. If an entity is not found, check the GrowAssistant device page in Home Assistant for the entity IDs created in your instance.
 
 ## Optional automation blueprint
 
