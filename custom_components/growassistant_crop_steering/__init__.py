@@ -35,7 +35,12 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: tuple[Platform, ...] = (Platform.NUMBER, Platform.SENSOR, Platform.SWITCH)
+PLATFORMS: tuple[Platform, ...] = (
+    Platform.BUTTON,
+    Platform.NUMBER,
+    Platform.SENSOR,
+    Platform.SWITCH,
+)
 
 DOMAIN_COUNTER = "counter"
 DOMAIN_INPUT_BOOLEAN = "input_boolean"
@@ -52,6 +57,7 @@ SERVICE_TURN_ON = "turn_on"
 SIGNAL_SWITCH_STATE_UPDATED = f"{DOMAIN}_switch_state_updated"
 SIGNAL_NUMBER_STATE_UPDATED = f"{DOMAIN}_number_state_updated"
 
+ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_DATETIME = "datetime"
 ATTR_VALUE = "value"
 
@@ -62,31 +68,41 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async def _handle_reset_cycle(call: ServiceCall) -> None:
         """Reset configured daily/cycle state helpers."""
         _LOGGER.info("GrowAssistant Crop Steering reset_cycle service requested")
-        for entry in _entries_for_service(hass, SERVICE_RESET_CYCLE):
+        for entry in _entries_for_service(
+            hass, SERVICE_RESET_CYCLE, call.data.get(ATTR_CONFIG_ENTRY_ID)
+        ):
             await _reset_cycle_for_entry(hass, entry)
 
     async def _handle_start_p1(call: ServiceCall) -> None:
         """Prepare helpers so external automation can start P1 shots."""
         _LOGGER.info("GrowAssistant Crop Steering start_p1 service requested")
-        for entry in _entries_for_service(hass, SERVICE_START_P1):
+        for entry in _entries_for_service(
+            hass, SERVICE_START_P1, call.data.get(ATTR_CONFIG_ENTRY_ID)
+        ):
             await _start_p1_for_entry(hass, entry)
 
     async def _handle_set_last_shot_now(call: ServiceCall) -> None:
         """Set the managed last-shot timestamp to now."""
         _LOGGER.info("GrowAssistant Crop Steering set_last_shot_now service requested")
-        for entry in _entries_for_service(hass, SERVICE_SET_LAST_SHOT_NOW):
+        for entry in _entries_for_service(
+            hass, SERVICE_SET_LAST_SHOT_NOW, call.data.get(ATTR_CONFIG_ENTRY_ID)
+        ):
             await _set_last_shot_for_entry(hass, entry, dt_util.now())
 
     async def _handle_clear_last_shot(call: ServiceCall) -> None:
         """Clear the managed last-shot timestamp."""
         _LOGGER.info("GrowAssistant Crop Steering clear_last_shot service requested")
-        for entry in _entries_for_service(hass, SERVICE_CLEAR_LAST_SHOT):
+        for entry in _entries_for_service(
+            hass, SERVICE_CLEAR_LAST_SHOT, call.data.get(ATTR_CONFIG_ENTRY_ID)
+        ):
             await _clear_last_shot_for_entry(hass, entry)
 
     async def _handle_stop_pump(call: ServiceCall) -> None:
         """Turn off the configured pump switch or input_boolean helper."""
         _LOGGER.info("GrowAssistant Crop Steering stop_pump service requested")
-        for entry in _entries_for_service(hass, SERVICE_STOP_PUMP):
+        for entry in _entries_for_service(
+            hass, SERVICE_STOP_PUMP, call.data.get(ATTR_CONFIG_ENTRY_ID)
+        ):
             await _stop_pump_for_entry(hass, entry)
 
     hass.services.async_register(DOMAIN, SERVICE_RESET_CYCLE, _handle_reset_cycle)
@@ -112,18 +128,23 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-def _entries_for_service(hass: HomeAssistant, service_name: str) -> list[ConfigEntry]:
+def _entries_for_service(
+    hass: HomeAssistant, service_name: str, config_entry_id: str | None = None
+) -> list[ConfigEntry]:
     """Return configured entries that should receive a service call."""
     entries = list(hass.config_entries.async_entries(DOMAIN))
 
+    if config_entry_id is not None:
+        entries = [entry for entry in entries if entry.entry_id == config_entry_id]
+
     if not entries:
         _LOGGER.warning(
-            "GrowAssistant Crop Steering service %s skipped because no config entries are configured",
+            "GrowAssistant Crop Steering service %s skipped because no matching config entries are configured",
             service_name,
         )
         return []
 
-    if len(entries) > 1:
+    if config_entry_id is None and len(entries) > 1:
         _LOGGER.warning(
             "GrowAssistant Crop Steering service %s will be applied to %s config entries; only one entry is expected",
             service_name,

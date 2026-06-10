@@ -14,6 +14,19 @@ views:
 
               Übersicht, Diagnose und Einstellungen für dein
               Crop-Steering-System.
+          - type: entities
+            title: Steuerung
+            entities:
+              - entity: button.growassistant_crop_steering_zyklus_zurucksetzen
+              - entity: button.growassistant_crop_steering_p1_starten
+              - entity: button.growassistant_crop_steering_pumpe_stoppen
+              - entity: button.growassistant_crop_steering_letzten_shot_auf_jetzt_setzen
+              - entity: button.growassistant_crop_steering_letzten_shot_loschen
+          - type: markdown
+            content: >-
+              Hinweis: Button-Entity-IDs können je nach
+              Home-Assistant-Sprache und Entity Registry abweichen. Prüfe bei
+              Bedarf die Entity-IDs auf der GrowAssistant-Geräteseite.
           - type: heading
             heading_style: subtitle
             heading: Phasen & Diagnose
