@@ -198,9 +198,11 @@ Turns off only the configured pump switch or input_boolean test helper. Use a `s
 
 ## Example dashboards
 
-Copy-paste Lovelace manual-card dashboard examples are available for quick setup and reference:
+Copy-paste Lovelace dashboard examples are available for quick setup and reference:
 
-- German manual-card example: `dashboards/crop_steering_dashboard_de.yaml`
+- German sections dashboard example: `dashboards/crop_steering_dashboard_de.yaml`
+
+The German sections dashboard example is intended for the Home Assistant raw dashboard configuration editor because it uses a top-level `views:` key. It is not a single manual card.
 
 Entity IDs may differ depending on your Home Assistant language and entity registry. If an entity is not found, check the GrowAssistant device page in Home Assistant for the entity IDs created in your instance.
 
