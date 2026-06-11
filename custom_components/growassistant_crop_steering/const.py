@@ -7,7 +7,7 @@ from dataclasses import dataclass
 DOMAIN = "growassistant_crop_steering"
 SIGNAL_LAST_SHOT_UPDATED = f"{DOMAIN}_last_shot_updated"
 NAME = "GrowAssistant – Crop Steering"
-VERSION = "0.1.4"
+VERSION = "0.1.5"
 
 DEFAULT_NAME = NAME
 SERVICE_RESET_CYCLE = "reset_cycle"

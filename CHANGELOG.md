@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.1.5 - 2026-06-11
+
+Bugfix release for optional drain and drain tray safety handling.
+
+### Fixed
+
+- Fixed optional drain and drain tray handling.
+- Unconfigured optional drain sensors no longer block P1/P2 readiness.
+- Unconfigured optional drain sensors no longer appear as missing required entities.
+- Configured drain sensors still block safely when wet, unavailable, or unknown.
+
+### Changed
+
+- Added clearer diagnostics for optional drain and drain tray sensors:
+  - configured
+  - ignored
+  - available
+  - raw state
+  - wet/clear evaluation
+
 ## v0.1.4 - 2026-06-11
 
 Pre-release usability update focused on easier dashboard control.
