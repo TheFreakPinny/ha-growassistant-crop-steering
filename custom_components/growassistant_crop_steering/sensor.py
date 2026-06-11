@@ -125,6 +125,8 @@ _LAST_SHOT_SENSOR = SensorEntityDescription(
 )
 
 _UNAVAILABLE_STATES = {None, "", STATE_UNAVAILABLE, STATE_UNKNOWN}
+_OPTIONAL_BINARY_WET_STATES = {STATE_ON, "wet", "open", "problem"}
+_OPTIONAL_BINARY_CLEAR_STATES = {"off", "dry", "closed", "clear"}
 
 
 def _normalize_vwc_sensors(config_value: Any) -> list[str]:
@@ -625,11 +627,14 @@ def _calculate_block_reason(
         missing_entities,
     )
 
-    drain = _get_optional_bool_state(hass, entry.data.get(CONF_DRAIN_SENSOR))
-    drain_tray_wet = _get_optional_bool_state(
+    drain_sensor = _get_optional_binary_sensor_state(hass, entry, CONF_DRAIN_SENSOR)
+    drain_tray_sensor = _get_optional_binary_sensor_state(
         hass,
-        entry.data.get(CONF_DRAIN_TRAY_SENSOR),
+        entry,
+        CONF_DRAIN_TRAY_SENSOR,
     )
+    drain_wet = drain_sensor["wet"]
+    drain_tray_wet = drain_tray_sensor["wet"]
     vwc_cap = _get_optional_numeric_state(hass, entry, CONF_VWC_CAP)
     vwc_cap_active = vwc is not None and vwc_cap is not None and vwc >= vwc_cap
 
@@ -677,8 +682,24 @@ def _calculate_block_reason(
         "p2_done": p2_done,
         "p1_soak_remaining_s": p1_soak_remaining_s,
         "p2_soak_remaining_s": p2_soak_remaining_s,
-        "drain": drain,
+        "drain": drain_wet,
+        "drain_wet": drain_wet,
+        "drain_sensor_configured": drain_sensor["configured"],
+        "drain_sensor_entity_id": drain_sensor["entity_id"],
+        "drain_sensor_state": drain_sensor["state"],
+        "drain_sensor_available": drain_sensor["available"],
+        "drain_sensor_ignored": not drain_sensor["configured"],
         "drain_tray_wet": drain_tray_wet,
+        "drain_tray_sensor_configured": drain_tray_sensor["configured"],
+        "drain_tray_sensor_entity_id": drain_tray_sensor["entity_id"],
+        "drain_tray_sensor_state": drain_tray_sensor["state"],
+        "drain_tray_sensor_available": drain_tray_sensor["available"],
+        "drain_tray_sensor_ignored": not drain_tray_sensor["configured"],
+        "optional_unavailable_entities": [
+            sensor_state["entity_id"]
+            for sensor_state in (drain_sensor, drain_tray_sensor)
+            if sensor_state["configured"] and not sensor_state["available"]
+        ],
         "vwc_cap_active": vwc_cap_active,
         "missing_entities": missing_entities,
     }
@@ -715,6 +736,12 @@ def _calculate_block_reason(
             if p2_soak_remaining_s > 0:
                 return "P2 blocked: soak active", attributes
 
+            if drain_sensor["configured"] and not drain_sensor["available"]:
+                return "P2 blocked: drain sensor unavailable", attributes
+
+            if drain_wet:
+                return "P2 blocked: drain sensor wet", attributes
+
             if (
                 vwc is not None
                 and p2_drop_threshold is not None
@@ -733,6 +760,15 @@ def _calculate_block_reason(
 
         if p1_soak_remaining_s > 0:
             return "P1 blocked: soak active", attributes
+
+        if drain_sensor["configured"] and not drain_sensor["available"]:
+            return "P1 blocked: drain sensor unavailable", attributes
+
+        if drain_wet:
+            return "P1 blocked: drain sensor wet", attributes
+
+        if drain_tray_sensor["configured"] and not drain_tray_sensor["available"]:
+            return "P1 blocked: drain tray unavailable", attributes
 
         if drain_tray_wet:
             return "P1 blocked: drain tray wet", attributes
@@ -767,6 +803,12 @@ def _calculate_block_reason(
 
         if p2_soak_remaining_s > 0:
             return "P2 blocked: soak active", attributes
+
+        if drain_sensor["configured"] and not drain_sensor["available"]:
+            return "P2 blocked: drain sensor unavailable", attributes
+
+        if drain_wet:
+            return "P2 blocked: drain sensor wet", attributes
 
         if (
             vwc is not None
@@ -930,12 +972,53 @@ def _get_boolean_state(
     return BOOLEAN_STATE_DEFAULTS.get(config_key, False)
 
 
-def _get_optional_bool_state(hass: HomeAssistant, entity_id: str | None) -> bool | None:
-    """Return an optional boolean state without marking it missing."""
-    if entity_id is None:
-        return None
+def _configured_optional_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
+    """Return a configured optional entity ID from options or entry data."""
+    for source in (entry.options, entry.data):
+        entity_id = source.get(config_key)
+        if isinstance(entity_id, str) and entity_id:
+            return entity_id
 
-    return _get_bool_state(hass, entity_id, [])
+    return None
+
+
+def _get_optional_binary_sensor_state(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    config_key: str,
+) -> dict[str, Any]:
+    """Return optional binary sensor diagnostics without marking it required."""
+    entity_id = _configured_optional_entity_id(entry, config_key)
+    if entity_id is None:
+        return {
+            "configured": False,
+            "entity_id": None,
+            "state": None,
+            "available": True,
+            "wet": False,
+        }
+
+    state = hass.states.get(entity_id)
+    if state is None or state.state in _UNAVAILABLE_STATES:
+        return {
+            "configured": True,
+            "entity_id": entity_id,
+            "state": None if state is None else state.state,
+            "available": False,
+            "wet": False,
+        }
+
+    normalized_state = state.state.lower()
+    wet = normalized_state in _OPTIONAL_BINARY_WET_STATES
+    clear = normalized_state in _OPTIONAL_BINARY_CLEAR_STATES
+
+    return {
+        "configured": True,
+        "entity_id": entity_id,
+        "state": state.state,
+        "available": clear or wet,
+        "wet": wet,
+    }
 
 
 def _get_numeric_state(
