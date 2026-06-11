@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.1.4 - 2026-06-11
+
+Pre-release usability update focused on easier dashboard control.
+
+### Added
+
+- Added Home Assistant button entities for common integration actions:
+  - Reset Cycle
+  - Start P1
+  - Stop Pump
+  - Set Last Shot Now
+  - Clear Last Shot
+- Added/updated a German sections dashboard example with a **Steuerung** card for the new buttons.
+
+### Changed
+
+- Button-triggered service calls are scoped to the matching GrowAssistant config entry/device.
+- Developer Tools service calls remain available.
+- Dashboard documentation now notes that entity IDs can vary depending on Home Assistant language and entity registry.
+
+### Testing notes
+
+Please test after updating and restarting Home Assistant:
+
+- The new button entities appear on the GrowAssistant device page.
+- **Set Last Shot Now** updates the Last Shot sensor.
+- **Clear Last Shot** clears the managed Last Shot value.
+- **Start P1** sets P1 Active, clears P1 Done, opens today’s P1 window, and backdates Last Shot.
+- **Reset Cycle** resets P1 state, shot counters, and P2 reference VWC.
+- **Stop Pump** only turns off the configured pump entity.
+
+### Notes
+
+This release still does not include a native Python irrigation engine.
+
+Pump control remains available only through the optional blueprint and user-created Home Assistant automations.
+
+Always use physical/electrical failsafes for real pump hardware.
+
 ## v0.1.3 - 2026-06-09
 
 ### Added
