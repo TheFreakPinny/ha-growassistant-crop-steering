@@ -72,6 +72,17 @@
       },
       "last_shot": {
         "name": "Last Shot"
+      },
+      "p1_debug": {
+        "name": "P1 Debug",
+        "state": {
+          "ready": "Ready",
+          "active": "Active",
+          "complete": "Complete",
+          "blocked": "Blocked",
+          "inactive_window": "Inactive window",
+          "missing_required": "Missing required"
+        }
       }
     },
     "number": {

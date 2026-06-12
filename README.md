@@ -16,7 +16,7 @@ The integration reads existing Home Assistant helpers/entities and exposes diagn
 - HACS-compatible Home Assistant custom integration.
 - UI config flow through **Settings → Devices & services**.
 - User selects existing Home Assistant helpers/entities during setup.
-- Diagnostic sensors for status, phase, P1/P2 soak countdowns, and block reason.
+- Diagnostic sensors for status, phase, P1/P2 soak countdowns, block reason, and P1 readiness debugging.
 - Optional helper services for resetting cycle helpers, preparing P1 helper state, updating the last-shot timestamp, and manually stopping the configured pump entity.
 - Optional Home Assistant button entities for dashboard access to the common helper services.
 - Optional shot engine blueprint for YAML-based pump orchestration outside the integration.
@@ -165,6 +165,23 @@ The underlying services remain available through **Developer Tools → Services/
   - Reports the integration-managed last irrigation shot timestamp as a timestamp sensor, or falls back to a legacy configured `input_datetime` helper for existing setups until a managed value is stored.
 - **Block Reason**
   - Reports a short diagnostic reason describing the current irrigation state and why a P1/P2 shot would or would not be allowed.
+- **P1 Debug** (`sensor.growassistant_crop_steering_p1_debug`)
+  - Reports detailed P1 readiness as `ready`, `active`, `complete`, `blocked`, `inactive_window`, or `missing_required`.
+  - Exposes P1 time-window, mode/state, VWC, shot/soak, optional drain-sensor, missing-entity, and `blocking_reasons` diagnostics.
+
+## Troubleshooting P1 skipped or inactive
+
+If the phase appears to jump from **P0 transpiration** directly to **P3 dryback**, check **P1 Debug** (`sensor.growassistant_crop_steering_p1_debug`). Its `blocking_reasons` attribute lists the exact reason P1 is not ready or active, while related attributes show the current light window, VWC thresholds, shot counters, soak countdown, and optional drain sensor states.
+
+Common P1 blockers include:
+
+- P1 window not active.
+- VWC above **P1 Start VWC**.
+- **P1 Done** still enabled.
+- **P1 Window Opened Today** still enabled.
+- Soak not finished.
+- P1 shot limit reached.
+- A configured drain sensor or drain tray sensor is wet or unavailable.
 
 
 ## Services
