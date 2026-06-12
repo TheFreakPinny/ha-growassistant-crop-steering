@@ -21,6 +21,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -41,6 +42,7 @@ from .const import (
     CONF_P1_DURATION_MIN,
     CONF_P1_INTERVAL_MIN,
     CONF_P1_MODE,
+    CONF_P1_SHOTS,
     CONF_P1_SHOTS_DONE,
     CONF_P1_SOAK_MIN,
     CONF_P1_START_VWC,
@@ -115,6 +117,12 @@ _BLOCK_REASON_SENSOR = SensorEntityDescription(
     key="block_reason",
     translation_key="block_reason",
     icon="mdi:information-outline",
+)
+
+_P1_DEBUG_SENSOR = SensorEntityDescription(
+    key="p1_debug",
+    translation_key="p1_debug",
+    icon="mdi:bug-check-outline",
 )
 
 _LAST_SHOT_SENSOR = SensorEntityDescription(
@@ -201,6 +209,7 @@ async def async_setup_entry(
                 _PHASE_P2_MIDDAY,
             ),
             GrowAssistantBlockReasonSensor(hass, entry),
+            GrowAssistantP1DebugSensor(hass, entry),
         ]
     )
 
@@ -383,6 +392,41 @@ class GrowAssistantBlockReasonSensor(SensorEntity):
         return _calculate_block_reason(self.hass, self._entry)[1]
 
 
+class GrowAssistantP1DebugSensor(SensorEntity):
+    """Expose detailed P1 readiness diagnostics without changing control logic."""
+
+    entity_description = _P1_DEBUG_SENSOR
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the P1 debug sensor."""
+        self.hass = hass
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_p1_debug"
+        self._attr_device_info = _device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to managed last-shot updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_LAST_SHOT_UPDATED}_{self._entry.entry_id}",
+                self.async_write_ha_state,
+            )
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the current P1 readiness state."""
+        return _calculate_p1_debug(self.hass, self._entry)[0]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return detailed P1 readiness diagnostics."""
+        return _calculate_p1_debug(self.hass, self._entry)[1]
+
+
 def _configured_mode(entry: ConfigEntry, config_key: str, default: str) -> str:
     """Return a configured P1/P2 mode from options, data, or a safe default."""
     for source in (entry.options, entry.data):
@@ -563,6 +607,230 @@ def _calculate_soak_remaining(
         "active": active,
         "remaining_s": remaining_s,
     }
+
+
+def _calculate_p1_debug(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> tuple[str, dict[str, Any]]:
+    """Calculate detailed P1 readiness diagnostics."""
+    phase, phase_attributes = _calculate_phase(hass, entry)
+    missing_entities = list(phase_attributes.get("missing_entities", []))
+    _collect_missing_required_entities(hass, entry, missing_entities)
+
+    p0_s = _minutes_to_seconds(
+        _get_numeric_state(hass, entry, CONF_P0_TRANSPIRATION_MIN, missing_entities)
+    )
+    p1_s = _minutes_to_seconds(
+        _get_numeric_state(hass, entry, CONF_P1_DURATION_MIN, missing_entities)
+    )
+    p1_start_vwc = _get_numeric_state(
+        hass, entry, CONF_P1_START_VWC, missing_entities
+    )
+    field_capacity_vwc = _get_numeric_state(
+        hass, entry, CONF_FIELD_CAPACITY_VWC, missing_entities
+    )
+    p1_shots_target_raw = _get_numeric_state(
+        hass, entry, CONF_P1_SHOTS, missing_entities
+    )
+    p1_shots_done_raw = _get_numeric_state(
+        hass, entry, CONF_P1_SHOTS_DONE, missing_entities
+    )
+
+    p1_mode = _configured_mode(entry, CONF_P1_MODE, MODE_SENSOR)
+    p1_active = _get_boolean_state(hass, entry, CONF_P1_ACTIVE, missing_entities)
+    p1_done = _get_boolean_state(hass, entry, CONF_P1_DONE, missing_entities)
+    p1_window_opened_today = _get_boolean_state(
+        hass, entry, CONF_P1_WINDOW_OPENED_TODAY, missing_entities
+    )
+
+    light_start_s = _get_time_seconds(hass, entry.data.get(CONF_LED_SUNRISE), [])
+    light_end_s = _get_time_seconds(hass, entry.data.get(CONF_LED_SUNSET), [])
+    now = dt_util.now()
+
+    led_day = phase_attributes.get("led_day")
+    since_on_s = phase_attributes.get("since_on_s")
+    p1_window_start_s = p0_s
+    p1_window_end_s = p0_s + p1_s if p0_s is not None and p1_s is not None else None
+    p1_window_active = (
+        led_day is True
+        and since_on_s is not None
+        and p1_window_start_s is not None
+        and p1_window_end_s is not None
+        and p1_window_start_s <= since_on_s < p1_window_end_s
+    )
+
+    vwc_state = _calculate_vwc_state(hass, entry.data.get(CONF_VWC_SENSOR))
+    vwc = vwc_state["vwc"]
+    vwc_valid = vwc is not None and vwc_state["vwc_valid_count"] > 0
+    vwc_below_start = (
+        vwc is not None and p1_start_vwc is not None and vwc <= p1_start_vwc
+    )
+    vwc_below_field_capacity = (
+        vwc is not None
+        and field_capacity_vwc is not None
+        and vwc < field_capacity_vwc
+    )
+
+    p1_soak_state = _calculate_soak_remaining(
+        hass, entry, CONF_P1_SOAK_MIN, _PHASE_P1_MORNING
+    )
+    p1_soak_remaining_s = p1_soak_state["remaining_s"]
+    soak_ok = p1_soak_remaining_s == 0
+
+    p1_shots_done = max(0, int(p1_shots_done_raw or 0))
+    p1_shots_target = max(0, int(p1_shots_target_raw or 0))
+    p1_shots_left = max(0, p1_shots_target - p1_shots_done)
+
+    drain_sensor = _get_optional_binary_sensor_state(hass, entry, CONF_DRAIN_SENSOR)
+    drain_tray_sensor = _get_optional_binary_sensor_state(
+        hass, entry, CONF_DRAIN_TRAY_SENSOR
+    )
+    drain_wet = drain_sensor["wet"]
+    drain_tray_wet = drain_tray_sensor["wet"]
+
+    missing_entities = _deduplicate_missing_entities(missing_entities, entry)
+    blocking_reasons: list[str] = []
+    passed_conditions: list[str] = []
+
+    if missing_entities:
+        blocking_reasons.append("missing_required_entities")
+
+    if p1_done:
+        blocking_reasons.append("p1_already_done")
+
+    if p1_active:
+        passed_conditions.append("p1_already_active")
+    else:
+        if led_day is False:
+            blocking_reasons.append("led_day_false")
+        if not p1_window_active:
+            blocking_reasons.append("p1_window_not_active")
+        if p1_mode == MODE_MANUAL:
+            blocking_reasons.append("p1_mode_manual_waiting")
+        if p1_window_opened_today:
+            blocking_reasons.append("p1_window_already_opened_today")
+
+    if vwc_valid:
+        passed_conditions.append("vwc_valid")
+    else:
+        blocking_reasons.append("vwc_invalid")
+
+    if p1_start_vwc is None:
+        blocking_reasons.append("p1_start_vwc_missing")
+    elif vwc_below_start:
+        passed_conditions.append("vwc_below_start_threshold")
+    elif vwc is not None:
+        blocking_reasons.append("vwc_above_start_threshold")
+
+    if field_capacity_vwc is None:
+        blocking_reasons.append("field_capacity_missing")
+    elif vwc_below_field_capacity:
+        passed_conditions.append("vwc_below_field_capacity")
+    elif vwc is not None:
+        blocking_reasons.append("field_capacity_reached")
+
+    if soak_ok:
+        passed_conditions.append("soak_finished")
+    else:
+        blocking_reasons.append("soak_not_finished")
+
+    if p1_shots_left > 0:
+        passed_conditions.append("p1_shots_available")
+    else:
+        blocking_reasons.append("p1_shot_limit_reached")
+
+    if drain_sensor["configured"] and not drain_sensor["available"]:
+        blocking_reasons.append("drain_sensor_unavailable")
+    elif drain_wet:
+        blocking_reasons.append("drain_sensor_wet")
+    else:
+        passed_conditions.append("drain_sensor_clear_or_ignored")
+
+    if drain_tray_sensor["configured"] and not drain_tray_sensor["available"]:
+        blocking_reasons.append("drain_tray_unavailable")
+    elif drain_tray_wet:
+        blocking_reasons.append("drain_tray_wet")
+    else:
+        passed_conditions.append("drain_tray_clear_or_ignored")
+
+    if missing_entities:
+        state = "missing_required"
+    elif p1_active:
+        state = "active"
+        blocking_reasons = [
+            reason
+            for reason in blocking_reasons
+            if reason
+            in {
+                "vwc_invalid",
+                "p1_start_vwc_missing",
+                "vwc_above_start_threshold",
+                "field_capacity_missing",
+                "field_capacity_reached",
+                "soak_not_finished",
+                "p1_shot_limit_reached",
+                "drain_sensor_wet",
+                "drain_sensor_unavailable",
+                "drain_tray_wet",
+                "drain_tray_unavailable",
+            }
+        ]
+    elif p1_done:
+        state = "complete"
+    elif not p1_window_active:
+        state = "inactive_window"
+    elif blocking_reasons:
+        state = "blocked"
+    else:
+        state = "ready"
+
+    attributes = {
+        "phase": phase,
+        "led_day": led_day,
+        "now": now.isoformat(),
+        "light_start": _format_time_seconds(light_start_s),
+        "light_end": _format_time_seconds(light_end_s),
+        "since_on_s": since_on_s,
+        "p0_s": p0_s,
+        "p1_s": p1_s,
+        "p1_window_start_s": p1_window_start_s,
+        "p1_window_end_s": p1_window_end_s,
+        "p1_window_active": p1_window_active,
+        "p1_mode": p1_mode,
+        "p1_active": p1_active,
+        "p1_done": p1_done,
+        "p1_window_opened_today": p1_window_opened_today,
+        "vwc": vwc,
+        "vwc_valid": vwc_valid,
+        "vwc_sensors": vwc_state["vwc_sensors"],
+        "vwc_values": vwc_state["vwc_values"],
+        "p1_start_vwc": p1_start_vwc,
+        "field_capacity_vwc": field_capacity_vwc,
+        "vwc_below_start": vwc_below_start,
+        "vwc_below_field_capacity": vwc_below_field_capacity,
+        "last_shot": p1_soak_state["last_shot"],
+        "p1_soak_remaining_s": p1_soak_remaining_s,
+        "soak_ok": soak_ok,
+        "p1_shots_done": p1_shots_done,
+        "p1_shots_target": p1_shots_target,
+        "p1_shots_left": p1_shots_left,
+        "drain_sensor_configured": drain_sensor["configured"],
+        "drain_sensor_ignored": not drain_sensor["configured"],
+        "drain_sensor_available": drain_sensor["available"],
+        "drain_sensor_state": drain_sensor["state"],
+        "drain_wet": drain_wet,
+        "drain_tray_sensor_configured": drain_tray_sensor["configured"],
+        "drain_tray_sensor_ignored": not drain_tray_sensor["configured"],
+        "drain_tray_sensor_available": drain_tray_sensor["available"],
+        "drain_tray_sensor_state": drain_tray_sensor["state"],
+        "drain_tray_wet": drain_tray_wet,
+        "missing_entities": missing_entities,
+        "blocking_reasons": blocking_reasons,
+        "passed_conditions": passed_conditions,
+    }
+
+    return state, attributes
 
 
 def _calculate_block_reason(
@@ -1206,6 +1474,18 @@ def _get_time_seconds(
         return None
 
     return parsed_hour * 3600 + parsed_minute * 60 + parsed_second
+
+
+def _format_time_seconds(value: int | None) -> str | None:
+    """Return a HH:MM:SS string for seconds since midnight."""
+    if value is None:
+        return None
+
+    normalized = value % (24 * 60 * 60)
+    hour = normalized // 3600
+    minute = (normalized % 3600) // 60
+    second = normalized % 60
+    return f"{hour:02}:{minute:02}:{second:02}"
 
 
 def _seconds_since_midnight(value: datetime) -> int:

@@ -72,6 +72,17 @@
       },
       "last_shot": {
         "name": "Letzter Shot"
+      },
+      "p1_debug": {
+        "name": "P1 Debug",
+        "state": {
+          "ready": "Bereit",
+          "active": "Aktiv",
+          "complete": "Abgeschlossen",
+          "blocked": "Blockiert",
+          "inactive_window": "Inaktives Fenster",
+          "missing_required": "Erforderliche Werte fehlen"
+        }
       }
     },
     "number": {
