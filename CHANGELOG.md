@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.6 - 2026-06-12
+
+Diagnostic pre-release for troubleshooting P1 readiness and phase transitions.
+
+### Added
+
+- Added a new P1 Debug diagnostic sensor.
+- The sensor exposes P1 readiness checks.
+- It shows timing/window state, LED day state, P0/P1 timing, P1 mode/state, VWC thresholds, shot/soak state, optional drain/drain tray diagnostics, missing entities, passed conditions, and blocking reasons.
+- This helps troubleshoot cases where the phase jumps from P0 directly to P3.
+
 ## v0.1.5 - 2026-06-11
 
 Bugfix release for optional drain and drain tray safety handling.
