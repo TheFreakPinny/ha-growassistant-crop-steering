@@ -171,7 +171,7 @@ The underlying services remain available through **Developer Tools → Services/
 
 ## Troubleshooting P1 skipped or inactive
 
-If the phase appears to jump from **P0 transpiration** directly to **P3 dryback**, check **P1 Debug** (`sensor.growassistant_crop_steering_p1_debug`). Its `blocking_reasons` attribute lists the exact reason P1 is not ready or active, while related attributes show the current light window, VWC thresholds, shot counters, soak countdown, and optional drain sensor states.
+If the phase appears to jump from **P0 transpiration** directly to **P3 dryback**, check **P1 Debug** (`sensor.growassistant_crop_steering_p1_debug`). Its `blocking_reasons` attribute lists the exact reason P1 is not ready or active, while related attributes show the current light window, VWC thresholds, shot counters, soak countdown, and optional drain sensor states. In sensor mode, the phase should report `p1_morning` during the configured P1 window whenever P1 is not already done, even before the P1 active helper turns on; when all readiness and safety checks pass, P1 Debug reports `ready` and Block Reason reports `P1 ready`.
 
 Common P1 blockers include:
 

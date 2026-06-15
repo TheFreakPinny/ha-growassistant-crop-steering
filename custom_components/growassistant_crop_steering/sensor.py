@@ -520,6 +520,14 @@ def _calculate_phase(
         and until_off_s > p2_end_offset_s
     )
 
+    p1_window_active = (
+        led_day is True
+        and since_on_s is not None
+        and p0_s is not None
+        and p1_s is not None
+        and p0_s <= since_on_s < p0_s + p1_s
+    )
+
     debug_attributes = {
         "led_day": led_day,
         "since_on_s": since_on_s,
@@ -536,6 +544,7 @@ def _calculate_phase(
         "p1_active": p1_active,
         "p1_done": p1_done,
         "p1_window_opened_today": p1_window_opened_today,
+        "p1_window_active": p1_window_active,
     }
 
     if led_day is None:
@@ -572,6 +581,9 @@ def _calculate_phase(
         return _PHASE_P3_DRYBACK, debug_attributes
 
     if p1_active:
+        return _PHASE_P1_MORNING, debug_attributes
+
+    if not p1_done and p1_window_active:
         return _PHASE_P1_MORNING, debug_attributes
 
     if p1_done and p2_available:
@@ -652,12 +664,15 @@ def _calculate_p1_debug(
     since_on_s = phase_attributes.get("since_on_s")
     p1_window_start_s = p0_s
     p1_window_end_s = p0_s + p1_s if p0_s is not None and p1_s is not None else None
-    p1_window_active = (
-        led_day is True
-        and since_on_s is not None
-        and p1_window_start_s is not None
-        and p1_window_end_s is not None
-        and p1_window_start_s <= since_on_s < p1_window_end_s
+    p1_window_active = bool(
+        phase_attributes.get("p1_window_active")
+        or (
+            led_day is True
+            and since_on_s is not None
+            and p1_window_start_s is not None
+            and p1_window_end_s is not None
+            and p1_window_start_s <= since_on_s < p1_window_end_s
+        )
     )
 
     vwc_state = _calculate_vwc_state(hass, entry.data.get(CONF_VWC_SENSOR))
