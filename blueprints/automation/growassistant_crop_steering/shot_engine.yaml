@@ -46,6 +46,15 @@ blueprint:
       selector:
         entity:
           domain: sensor
+    p1_debug_sensor:
+      name: P1 Debug Sensor
+      description: >-
+        GrowAssistant P1 Debug diagnostic sensor. When this sensor reports
+        ready during the P1 morning phase, the blueprint can automatically call
+        the Start P1 service before any P1 shots are allowed to run.
+      selector:
+        entity:
+          domain: sensor
     p1_soak_remaining_sensor:
       name: P1 soak remaining sensor
       description: GrowAssistant P1 Soak Remaining diagnostic sensor, in seconds.
@@ -85,6 +94,14 @@ blueprint:
     p1_done_boolean:
       name: P1 done switch or boolean
       description: Managed switch or input boolean that must be off before P1 shots are allowed.
+      selector:
+        entity:
+          domain:
+            - input_boolean
+            - switch
+    p1_window_opened_today_boolean:
+      name: P1 window opened today switch or boolean
+      description: Managed switch or input boolean that must be off before P1 can be auto-started.
       selector:
         entity:
           domain:
@@ -155,6 +172,8 @@ trigger:
   - platform: state
     entity_id: !input phase_sensor
   - platform: state
+    entity_id: !input p1_debug_sensor
+  - platform: state
     entity_id: !input p1_soak_remaining_sensor
   - platform: state
     entity_id: !input p2_soak_remaining_sensor
@@ -164,6 +183,8 @@ trigger:
     entity_id: !input p1_active_boolean
   - platform: state
     entity_id: !input p1_done_boolean
+  - platform: state
+    entity_id: !input p1_window_opened_today_boolean
   - platform: state
     entity_id: !input p1_shots_done_counter
   - platform: state
@@ -175,12 +196,14 @@ variables:
   pump_switch_entity: !input pump_switch
   phase_sensor_entity: !input phase_sensor
   block_reason_sensor_entity: !input block_reason_sensor
+  p1_debug_entity: !input p1_debug_sensor
   p1_soak_remaining_entity: !input p1_soak_remaining_sensor
   p2_soak_remaining_entity: !input p2_soak_remaining_sensor
   p1_shot_duration_entity: !input p1_shot_duration_s
   p2_shot_duration_entity: !input p2_shot_duration_s
   p1_active_entity: !input p1_active_boolean
   p1_done_entity: !input p1_done_boolean
+  p1_window_opened_today_entity: !input p1_window_opened_today_boolean
   p1_shots_done_entity: !input p1_shots_done_counter
   p2_shots_done_entity: !input p2_shots_done_counter
   p2_shots_number_entity: !input p2_shots_number
@@ -194,6 +217,21 @@ condition:
 
 action:
   - choose:
+      - alias: "Auto-start P1 when ready"
+        conditions:
+          - condition: template
+            value_template: "{{ is_state(phase_sensor_entity, 'p1_morning') }}"
+          - condition: template
+            value_template: "{{ is_state(p1_debug_entity, 'ready') }}"
+          - condition: template
+            value_template: "{{ is_state(p1_active_entity, 'off') }}"
+          - condition: template
+            value_template: "{{ is_state(p1_done_entity, 'off') }}"
+          - condition: template
+            value_template: "{{ is_state(p1_window_opened_today_entity, 'off') }}"
+        sequence:
+          - service: growassistant_crop_steering.start_p1
+
       - alias: "Run a P1 morning shot"
         conditions:
           - condition: template
