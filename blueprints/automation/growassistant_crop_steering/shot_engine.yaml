@@ -23,11 +23,13 @@ blueprint:
   domain: automation
   input:
     pump_switch:
-      name: Pump switch
-      description: Switch entity that powers the irrigation pump.
+      name: Pump switch or test helper
+      description: Switch entity that powers the irrigation pump, or an input_boolean helper for dry-run testing.
       selector:
         entity:
-          domain: switch
+          domain:
+            - switch
+            - input_boolean
     phase_sensor:
       name: Phase sensor
       description: GrowAssistant Phase diagnostic sensor.
@@ -207,14 +209,14 @@ action:
               {{ drain_tray_entity in ['', none]
                  or not is_state(drain_tray_entity, 'on') }}
         sequence:
-          - service: switch.turn_on
+          - service: homeassistant.turn_on
             target:
               entity_id: !input pump_switch
           - parallel:
               - sequence:
                   - delay:
                       seconds: "{{ [states(p1_shot_duration_entity) | float(0), 0] | max }}"
-                  - service: switch.turn_off
+                  - service: homeassistant.turn_off
                     target:
                       entity_id: !input pump_switch
                   - choose:
@@ -237,7 +239,7 @@ action:
                       seconds: >-
                         {{ ([states(p1_shot_duration_entity) | float(0), 0] | max)
                            + ([failsafe_extra_seconds_value | float(10), 0] | max) }}
-                  - service: switch.turn_off
+                  - service: homeassistant.turn_off
                     target:
                       entity_id: !input pump_switch
 
@@ -252,14 +254,14 @@ action:
           - condition: template
             value_template: "{{ states(p2_shots_number_entity) | int(0) > 0 }}"
         sequence:
-          - service: switch.turn_on
+          - service: homeassistant.turn_on
             target:
               entity_id: !input pump_switch
           - parallel:
               - sequence:
                   - delay:
                       seconds: "{{ [states(p2_shot_duration_entity) | float(0), 0] | max }}"
-                  - service: switch.turn_off
+                  - service: homeassistant.turn_off
                     target:
                       entity_id: !input pump_switch
                   - choose:
@@ -282,6 +284,6 @@ action:
                       seconds: >-
                         {{ ([states(p2_shot_duration_entity) | float(0), 0] | max)
                            + ([failsafe_extra_seconds_value | float(10), 0] | max) }}
-                  - service: switch.turn_off
+                  - service: homeassistant.turn_off
                     target:
                       entity_id: !input pump_switch
