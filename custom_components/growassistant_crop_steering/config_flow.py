@@ -11,6 +11,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
+from .config import configured_entity_value
 from .const import (
     CONFIG_ENTRY_KEYS,
     CONF_DRAIN_SENSOR,
@@ -65,18 +66,36 @@ def _configured_mode(
 
 def _options_schema(entry: config_entries.ConfigEntry) -> vol.Schema:
     """Return the options form schema."""
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_P1_MODE,
-                default=_configured_mode(entry, CONF_P1_MODE),
-            ): _mode_selector(),
-            vol.Required(
-                CONF_P2_MODE,
-                default=_configured_mode(entry, CONF_P2_MODE),
-            ): _mode_selector(),
-        }
-    )
+    schema: dict[Any, Any] = {
+        vol.Required(
+            CONF_P1_MODE,
+            default=_configured_mode(entry, CONF_P1_MODE),
+        ): _mode_selector(),
+        vol.Required(
+            CONF_P2_MODE,
+            default=_configured_mode(entry, CONF_P2_MODE),
+        ): _mode_selector(),
+    }
+
+    for config_key, domain in _REQUIRED_ENTITY_FIELDS:
+        value = configured_entity_value(entry, config_key)
+        if config_key == CONF_VWC_SENSOR and isinstance(value, str):
+            value = [value] if value else []
+        schema[vol.Required(config_key, default=value)] = _entity_selector(
+            domain,
+            multiple=config_key == CONF_VWC_SENSOR,
+        )
+
+    for config_key, domain in _OPTIONAL_ENTITY_FIELDS:
+        value = configured_entity_value(entry, config_key)
+        marker = (
+            vol.Optional(config_key, default=value)
+            if value
+            else vol.Optional(config_key)
+        )
+        schema[marker] = _entity_selector(domain)
+
+    return vol.Schema(schema)
 
 
 def _entity_selector(
@@ -154,15 +173,20 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage P1/P2 steering mode options."""
+        """Manage steering modes and external entity options."""
         if user_input is not None:
+            options = {
+                **self._config_entry.options,
+                **user_input,
+            }
+            # Persist an explicit empty override so clearing an optional entity does
+            # not reveal the original value still retained in entry.data.
+            for config_key, _domain in _OPTIONAL_ENTITY_FIELDS:
+                options[config_key] = user_input.get(config_key)
+
             return self.async_create_entry(
                 title="",
-                data={
-                    **self._config_entry.options,
-                    CONF_P1_MODE: user_input[CONF_P1_MODE],
-                    CONF_P2_MODE: user_input[CONF_P2_MODE],
-                },
+                data=options,
             )
 
         return self.async_show_form(

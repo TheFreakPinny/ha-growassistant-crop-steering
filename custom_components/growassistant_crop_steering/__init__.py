@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
+from .config import configured_entity_value
 from .const import (
     BOOLEAN_STATE_DEFAULTS,
     CONF_LAST_SHOT,
@@ -469,7 +470,7 @@ def _numeric_setting_value(
 
 def _configured_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
     """Return a configured entity id, logging and skipping if it is missing."""
-    entity_id = entry.data.get(config_key)
+    entity_id = configured_entity_value(entry, config_key)
     if isinstance(entity_id, str) and entity_id.strip():
         return entity_id
 

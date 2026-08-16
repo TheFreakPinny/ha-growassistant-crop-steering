@@ -16,6 +16,7 @@ The integration reads existing Home Assistant helpers/entities and exposes diagn
 - HACS-compatible Home Assistant custom integration.
 - UI config flow through **Settings → Devices & services**.
 - User selects existing Home Assistant helpers/entities during setup.
+- Configured external entities can later be changed under **Configure** without removing and re-adding the integration.
 - Diagnostic sensors for status, phase, P1/P2 soak countdowns, block reason, and P1 readiness debugging.
 - Optional helper services for resetting cycle helpers, preparing P1 helper state, updating the last-shot timestamp, and manually stopping the configured pump entity.
 - Optional Home Assistant button entities for dashboard access to the common helper services.

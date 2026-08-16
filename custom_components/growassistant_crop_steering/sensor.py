@@ -25,11 +25,11 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from .config import configured_entity_value
 from .const import (
     BOOLEAN_STATE_DEFAULTS,
     CONFIG_ENTRY_KEYS,
     CONF_LAST_SHOT,
-    CONF_LED_DAY_SENSOR,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
     CONF_P0_TRANSPIRATION_MIN,
@@ -234,7 +234,10 @@ class GrowAssistantStatusSensor(SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return selected entities and configured setup options for diagnostics."""
-        return {key: self._entry.data.get(key) for key in CONFIG_ENTRY_KEYS}
+        return {
+            key: configured_entity_value(self._entry, key)
+            for key in CONFIG_ENTRY_KEYS
+        }
 
 
 class GrowAssistantPhaseSensor(SensorEntity):
@@ -501,8 +504,8 @@ def _calculate_phase(
 
     timing = _light_timing(
         hass,
-        entry.data.get(CONF_LED_SUNRISE),
-        entry.data.get(CONF_LED_SUNSET),
+        configured_entity_value(entry, CONF_LED_SUNRISE),
+        configured_entity_value(entry, CONF_LED_SUNSET),
         missing_entities,
     )
 
@@ -656,8 +659,12 @@ def _calculate_p1_debug(
         hass, entry, CONF_P1_WINDOW_OPENED_TODAY, missing_entities
     )
 
-    light_start_s = _get_time_seconds(hass, entry.data.get(CONF_LED_SUNRISE), [])
-    light_end_s = _get_time_seconds(hass, entry.data.get(CONF_LED_SUNSET), [])
+    light_start_s = _get_time_seconds(
+        hass, configured_entity_value(entry, CONF_LED_SUNRISE), []
+    )
+    light_end_s = _get_time_seconds(
+        hass, configured_entity_value(entry, CONF_LED_SUNSET), []
+    )
     now = dt_util.now()
 
     led_day = phase_attributes.get("led_day")
@@ -675,7 +682,9 @@ def _calculate_p1_debug(
         )
     )
 
-    vwc_state = _calculate_vwc_state(hass, entry.data.get(CONF_VWC_SENSOR))
+    vwc_state = _calculate_vwc_state(
+        hass, configured_entity_value(entry, CONF_VWC_SENSOR)
+    )
     vwc = vwc_state["vwc"]
     vwc_valid = vwc is not None and vwc_state["vwc_valid_count"] > 0
     vwc_below_start = (
@@ -857,7 +866,9 @@ def _calculate_block_reason(
     missing_entities = list(phase_attributes.get("missing_entities", []))
     _collect_missing_required_entities(hass, entry, missing_entities)
 
-    vwc_state = _calculate_vwc_state(hass, entry.data.get(CONF_VWC_SENSOR))
+    vwc_state = _calculate_vwc_state(
+        hass, configured_entity_value(entry, CONF_VWC_SENSOR)
+    )
     vwc = vwc_state["vwc"]
     p1_mode = _configured_mode(entry, CONF_P1_MODE, MODE_SENSOR)
     p2_mode = _configured_mode(entry, CONF_P2_MODE, MODE_SENSOR)
@@ -1112,7 +1123,7 @@ def _collect_missing_required_entities(
 ) -> None:
     """Append missing required block reason entities before detailed reads."""
     for key in _REQUIRED_BLOCK_REASON_KEYS:
-        entity_id = entry.data.get(key)
+        entity_id = configured_entity_value(entry, key)
         if key == CONF_VWC_SENSOR:
             vwc_sensors = _normalize_vwc_sensors(entity_id)
             if not vwc_sensors:
@@ -1138,7 +1149,7 @@ def _configured_required_entities(entry: ConfigEntry) -> set[str]:
     configured_required = set(_REQUIRED_BLOCK_REASON_KEYS)
 
     for key in (*_REQUIRED_BLOCK_REASON_KEYS, *NUMERIC_SETTING_KEYS):
-        value = entry.data.get(key)
+        value = configured_entity_value(entry, key)
         if key == CONF_VWC_SENSOR:
             configured_required.update(_normalize_vwc_sensors(value))
         elif isinstance(value, str) and value:
@@ -1257,10 +1268,9 @@ def _get_boolean_state(
 
 def _configured_optional_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
     """Return a configured optional entity ID from options or entry data."""
-    for source in (entry.options, entry.data):
-        entity_id = source.get(config_key)
-        if isinstance(entity_id, str) and entity_id:
-            return entity_id
+    entity_id = configured_entity_value(entry, config_key)
+    if isinstance(entity_id, str) and entity_id:
+        return entity_id
 
     return None
 
