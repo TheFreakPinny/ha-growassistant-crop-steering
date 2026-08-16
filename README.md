@@ -34,6 +34,8 @@ The integration reads existing Home Assistant helpers/entities and exposes diagn
 8. Add the integration from **Settings → Devices & services → Add integration**.
 9. Search for **GrowAssistant – Crop Steering** and complete the UI config flow.
 
+> **Important:** HACS installs the custom integration only. It does **not** automatically copy the optional Shot Engine blueprint into `/config/blueprints`. If you want to use the blueprint, install/import it separately as described in [Optional automation blueprint](#optional-automation-blueprint).
+
 ## Manual installation
 
 Copy the integration directory into your Home Assistant configuration directory:
@@ -244,6 +246,14 @@ This repository includes an optional Home Assistant automation blueprint for use
 blueprints/automation/growassistant_crop_steering/shot_engine.yaml
 ```
 
+**The blueprint is not installed by HACS together with the custom integration.** Install it separately either by importing the raw blueprint URL in Home Assistant or by copying the file manually.
+
+Blueprint import URL:
+
+```text
+https://raw.githubusercontent.com/TheFreakPinny/ha-growassistant-crop-steering/main/blueprints/automation/growassistant_crop_steering/shot_engine.yaml
+```
+
 The blueprint can run conservative P1/P2 shots from the integration's diagnostic sensors and your existing helpers or managed entities. It watches the **Phase**, **P1 Debug**, **P1 Soak Remaining**, and **P2 Soak Remaining** sensors, checks the configured P1/P2 state, turns the selected pump switch or input_boolean test helper on for the configured shot duration, increments the matching managed shot-counter number or legacy counter helper, updates the integration-managed last shot timestamp through `growassistant_crop_steering.set_last_shot_now`, and sends a second delayed pump-off command as a failsafe. Existing legacy blueprint automations can still select external `counter` helpers; new automations may select the integration-managed `number` entities instead.
 
 When **Phase** is `p1_morning`, **P1 Debug** is `ready`, **P1 Active** is off, **P1 Done** is off, and **P1 Window Opened Today** is off, the optional blueprint automatically calls `growassistant_crop_steering.start_p1`. That service prepares P1 state and backdates Last Shot, but does not turn on the pump; the blueprint waits for the next time-pattern or state trigger before running the first P1 shot so startup and shot sequencing stay separate. Users can still press the **Start P1** button manually for testing or one-off preparation.
@@ -252,15 +262,19 @@ Native Python pump control is **not implemented yet**. The blueprint is optional
 
 Because this blueprint can control real irrigation hardware, and because `input_boolean` helpers are only dummy test helpers rather than pump safety devices, you must provide an independent physical/electrical failsafe such as an appropriate float switch, leak detector cutoff, timer relay, fused circuit, or other hardware protection. Do not rely on Home Assistant, this integration, the blueprint, or software logic alone to prevent flooding, pump damage, crop damage, or electrical hazards.
 
-### Installing the blueprint manually
+### Installing/importing the blueprint
 
-Copy the blueprint file into your Home Assistant configuration directory at the same relative path:
+To import it through the Home Assistant UI, open **Settings → Automations & scenes → Blueprints**, choose **Import Blueprint**, and use the raw URL shown above. Review the imported blueprint before creating an automation from it.
+
+Alternatively, copy the blueprint file into your Home Assistant configuration directory at the same relative path:
 
 ```text
 blueprints/automation/growassistant_crop_steering/shot_engine.yaml
 ```
 
 Then reload automations/blueprints or restart Home Assistant, create an automation from the blueprint, and review every input before enabling it.
+
+For a safe functional test, select an `input_boolean` as the blueprint pump input. It should turn on for the configured shot duration and turn off again without energizing real pump hardware.
 
 ## Phase states
 
