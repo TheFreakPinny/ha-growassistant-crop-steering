@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.1.8 - 2026-08-16
+
+Blueprint bugfix and usability release focused on safe P1 startup sequencing and easier dry-run testing.
+
+### Fixed
+
+- The optional shot engine blueprint pump selector now accepts both `switch` and `input_boolean` entities.
+- Pump actions now use `homeassistant.turn_on` and `homeassistant.turn_off`, so a dummy `input_boolean` can be used for dry-run testing without changing real-switch behavior.
+
+### Added
+
+- Added automatic P1 preparation in the optional shot engine blueprint.
+- When Phase is `p1_morning`, P1 Debug is `ready`, P1 Active is off, P1 Done is off, and P1 Window Opened Today is off, the blueprint calls `growassistant_crop_steering.start_p1` automatically.
+- The auto-start branch does not turn on the pump. The first P1 shot is intentionally deferred until a later trigger so P1 preparation and pump actuation remain separate and duplicate/immediate startup shots are avoided.
+
+### Documentation
+
+- Clarified that HACS installs the custom integration only and does not automatically install the optional blueprint into Home Assistant's blueprint directory.
+- Documented separate blueprint import/manual-copy installation and `input_boolean` dry-run testing.
+
+### Notes
+
+- This release still does not add a native Python irrigation engine.
+- Pump control remains in the optional Home Assistant blueprint or user-created automations.
+- Always use independent physical/electrical failsafes for real irrigation hardware.
+
 ## v0.1.7 - 2026-06-15
 
 Bugfix release for sensor-mode P1 phase transitions and diagnostics.
