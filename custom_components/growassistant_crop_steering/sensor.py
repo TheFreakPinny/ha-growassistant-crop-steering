@@ -986,6 +986,12 @@ def _calculate_block_reason(
             if drain_wet:
                 return "P2 blocked: drain sensor wet", attributes
 
+            if drain_tray_sensor["configured"] and not drain_tray_sensor["available"]:
+                return "P2 blocked: drain tray unavailable", attributes
+
+            if drain_tray_wet:
+                return "P2 blocked: drain tray wet", attributes
+
             if (
                 vwc is not None
                 and p2_drop_threshold is not None
@@ -1053,6 +1059,12 @@ def _calculate_block_reason(
 
         if drain_wet:
             return "P2 blocked: drain sensor wet", attributes
+
+        if drain_tray_sensor["configured"] and not drain_tray_sensor["available"]:
+            return "P2 blocked: drain tray unavailable", attributes
+
+        if drain_tray_wet:
+            return "P2 blocked: drain tray wet", attributes
 
         if (
             vwc is not None

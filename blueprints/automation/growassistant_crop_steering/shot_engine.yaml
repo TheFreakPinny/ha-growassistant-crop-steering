@@ -39,9 +39,10 @@ blueprint:
     block_reason_sensor:
       name: Block reason sensor (optional)
       description: >-
-        Optional GrowAssistant Block Reason diagnostic sensor. This blueprint
-        does not make decisions from the text value; select it for traceability
-        and future edits if desired.
+        GrowAssistant Block Reason diagnostic sensor used as a fail-closed P2
+        safety gate. P2 shots run only when this sensor reports exactly
+        "P2 ready". The input remains optional for existing automations, but P2
+        shots are disabled when it is not configured or is unavailable.
       default: ""
       selector:
         entity:
@@ -147,7 +148,8 @@ blueprint:
       name: Drain tray sensor (optional)
       description: >-
         Optional binary sensor for a drain tray, leak, or high-water condition.
-        When configured, P1 shots are blocked while this sensor is on/wet.
+        When configured, P1 and P2 shots are blocked while this sensor is
+        on/wet.
       default: ""
       selector:
         entity:
@@ -308,6 +310,14 @@ action:
             value_template: "{{ states(p2_shots_done_entity) | int(0) < states(p2_shots_number_entity) | int(0) }}"
           - condition: template
             value_template: "{{ states(p2_shots_number_entity) | int(0) > 0 }}"
+          - condition: template
+            value_template: >-
+              {{ block_reason_sensor_entity not in ['', none]
+                 and is_state(block_reason_sensor_entity, 'P2 ready') }}
+          - condition: template
+            value_template: >-
+              {{ drain_tray_entity in ['', none]
+                 or not is_state(drain_tray_entity, 'on') }}
         sequence:
           - service: homeassistant.turn_on
             target:
