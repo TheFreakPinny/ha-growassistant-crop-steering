@@ -13,6 +13,13 @@ start_p1:
     mirror P1 switch changes to legacy input_boolean helpers when present. This
     service does not turn on the pump.
 
+complete_p1:
+  name: Complete P1
+  description: >-
+    Capture the current averaged VWC as P2 Reference VWC, mark P1 complete, and
+    deactivate P1. If no configured VWC sensor has a valid reading, no state is
+    changed. This service does not control the pump.
+
 set_last_shot_now:
   name: Set last shot now
   description: >-

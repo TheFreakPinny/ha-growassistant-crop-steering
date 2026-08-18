@@ -24,15 +24,18 @@ from .const import (
     CONF_P2_REF_VWC,
     CONF_P2_SHOTS_DONE,
     CONF_PUMP_SWITCH,
+    CONF_VWC_SENSOR,
     DOMAIN,
     NUMERIC_SETTING_DEFAULTS,
     SERVICE_CLEAR_LAST_SHOT,
+    SERVICE_COMPLETE_P1,
     SERVICE_RESET_CYCLE,
     SERVICE_SET_LAST_SHOT_NOW,
     SERVICE_START_P1,
     SERVICE_STOP_PUMP,
     SIGNAL_LAST_SHOT_UPDATED,
 )
+from .vwc import calculate_vwc_state
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,6 +93,14 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         ):
             await _set_last_shot_for_entry(hass, entry, dt_util.now())
 
+    async def _handle_complete_p1(call: ServiceCall) -> None:
+        """Capture the P2 reference and complete P1 without controlling the pump."""
+        _LOGGER.info("GrowAssistant Crop Steering complete_p1 service requested")
+        for entry in _entries_for_service(
+            hass, SERVICE_COMPLETE_P1, call.data.get(ATTR_CONFIG_ENTRY_ID)
+        ):
+            await _complete_p1_for_entry(hass, entry)
+
     async def _handle_clear_last_shot(call: ServiceCall) -> None:
         """Clear the managed last-shot timestamp."""
         _LOGGER.info("GrowAssistant Crop Steering clear_last_shot service requested")
@@ -108,6 +119,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     hass.services.async_register(DOMAIN, SERVICE_RESET_CYCLE, _handle_reset_cycle)
     hass.services.async_register(DOMAIN, SERVICE_START_P1, _handle_start_p1)
+    hass.services.async_register(DOMAIN, SERVICE_COMPLETE_P1, _handle_complete_p1)
     hass.services.async_register(
         DOMAIN, SERVICE_SET_LAST_SHOT_NOW, _handle_set_last_shot_now
     )
@@ -213,6 +225,33 @@ async def _start_p1_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         "GrowAssistant Crop Steering start_p1 completed for config entry %s",
         entry.entry_id,
     )
+
+
+async def _complete_p1_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Capture current VWC and atomically order the managed P1 completion state."""
+    vwc_state = calculate_vwc_state(
+        hass, configured_entity_value(entry, CONF_VWC_SENSOR)
+    )
+    vwc = vwc_state["vwc"]
+    if vwc is None:
+        _LOGGER.warning(
+            "GrowAssistant Crop Steering complete_p1 skipped config entry %s because no valid VWC was available from configured sensors %s; P2 reference and P1 state were preserved",
+            entry.entry_id,
+            vwc_state["vwc_sensors"],
+        )
+        return False
+
+    # This order is deliberate: phase must not leave P1 until its P2 reference and
+    # completion flag are both ready.
+    await _set_numeric_setting(hass, entry, CONF_P2_REF_VWC, vwc)
+    await _set_boolean_state(hass, entry, CONF_P1_DONE, True)
+    await _set_boolean_state(hass, entry, CONF_P1_ACTIVE, False)
+    _LOGGER.info(
+        "GrowAssistant Crop Steering complete_p1 completed for config entry %s with P2 reference VWC %s",
+        entry.entry_id,
+        vwc,
+    )
+    return True
 
 
 async def _set_boolean_state(
@@ -405,9 +444,7 @@ def _legacy_input_boolean_entity_id(entry: ConfigEntry, config_key: str) -> str 
     return None
 
 
-def _legacy_input_datetime_entity_id(
-    entry: ConfigEntry, config_key: str
-) -> str | None:
+def _legacy_input_datetime_entity_id(entry: ConfigEntry, config_key: str) -> str | None:
     """Return a legacy input_datetime helper entity id if one is configured."""
     entity_id = entry.data.get(config_key)
     if isinstance(entity_id, str) and entity_id.strip():
