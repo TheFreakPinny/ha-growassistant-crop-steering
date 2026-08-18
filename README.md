@@ -18,7 +18,7 @@ The integration reads existing Home Assistant helpers/entities and exposes diagn
 - User selects existing Home Assistant helpers/entities during setup.
 - Configured external entities can later be changed under **Configure** without removing and re-adding the integration.
 - Diagnostic sensors for status, phase, P1/P2 soak countdowns, block reason, and P1 readiness debugging.
-- Optional helper services for resetting cycle helpers, preparing P1 helper state, updating the last-shot timestamp, and manually stopping the configured pump entity.
+- Optional helper services for resetting cycle helpers, preparing/completing P1 state, updating the last-shot timestamp, and manually stopping the configured pump entity.
 - Optional Home Assistant button entities for dashboard access to the common helper services.
 - Optional shot engine blueprint for YAML-based pump orchestration outside the integration.
 - No native integration-side pump control or autonomous irrigation engine implemented yet.
@@ -34,6 +34,8 @@ The integration reads existing Home Assistant helpers/entities and exposes diagn
 7. Restart Home Assistant.
 8. Add the integration from **Settings → Devices & services → Add integration**.
 9. Search for **GrowAssistant – Crop Steering** and complete the UI config flow.
+
+> **Important:** HACS installs the custom integration only. It does **not** automatically install the optional Shot Engine blueprint. Import or copy the blueprint separately if you want to use it.
 
 ## Manual installation
 
@@ -60,20 +62,20 @@ P1/P2 steering modes are configured directly during integration setup; no `input
 - `sensor` — sensor-controlled steering logic.
 - `manual` — interval/manual schedule controlled behavior.
 
-After setup, P1/P2 modes can be changed from the integration options without deleting and re-adding the integration. Options values override the setup values while preserving compatibility with existing config entries.
+After setup, P1/P2 modes and the configured external entity assignments can be changed from **Settings → Devices & services → GrowAssistant – Crop Steering → Configure** without deleting and re-adding the integration. Saved options take precedence over the initial setup values while preserving backward compatibility. The VWC selector supports one or multiple sensors. Clearing an optional Drain Sensor or Drain Tray assignment stores an explicit empty override so the old initial setup value does not become active again.
 
 ### Required
 
 - **Pump switch or test helper** (`switch` or `input_boolean`)
   - Use a `switch` entity for real irrigation pump hardware.
   - Use an `input_boolean` helper for safe testing or dummy pump simulation without energizing real hardware.
-  - Used only by the `growassistant_crop_steering.stop_pump` manual/safety service in v0.1.
-  - Automatic pump control is not implemented yet.
+  - Used only by the `growassistant_crop_steering.stop_pump` manual/safety service in the native integration.
+  - Pump-on automation is provided only through the optional blueprint or user-created automations.
 - **VWC sensor(s)** (`sensor`)
   - Select one or multiple sensor entities that report substrate volumetric water content.
   - When multiple sensors are selected, all valid numeric values are averaged automatically.
   - Unknown, unavailable, or non-numeric sensor states are ignored.
-  - If all selected sensors are unavailable or invalid, VWC-dependent diagnostics are blocked until at least one valid value is available.
+  - If all selected sensors are unavailable or invalid, VWC-dependent diagnostics and P1 completion are blocked until at least one valid value is available.
 - **LED sunrise input_datetime** (`input_datetime`)
   - Grow light start time. Create this helper as **Time only**.
   - Example LED sunrise/light start value: `19:00:00`.
@@ -148,8 +150,10 @@ The underlying services remain available through **Developer Tools → Services/
 
 - **Drain binary sensor** (`binary_sensor`)
   - Optional binary sensor that indicates irrigation drain/runoff activity.
+  - In P1, a wet configured Drain Sensor is an intended P1 completion condition.
 - **Drain tray leak binary sensor** (`binary_sensor`)
   - Optional binary sensor that indicates a drain tray leak or high-water condition.
+  - The Drain Tray is a safety blocker for P1 and P2; it does not count as normal P1 completion.
 
 ## Provided sensors
 
@@ -184,10 +188,9 @@ Common P1 blockers include:
 - P1 shot limit reached.
 - A configured drain sensor or drain tray sensor is wet or unavailable.
 
-
 ## Services
 
-GrowAssistant – Crop Steering provides basic read/write service helpers for maintenance and external automation workflows. These services update the configured Home Assistant helper entities only; they do **not** implement a full pump control loop or native irrigation shot engine. Existing YAML automations or future control logic remain responsible for deciding when shots may run. The same actions are also exposed as integration-managed button entities for optional dashboard control, while the services remain available through **Developer Tools → Services/Actions**.
+GrowAssistant – Crop Steering provides basic read/write service helpers for maintenance and external automation workflows. These services update integration-managed or configured Home Assistant state only; they do **not** implement a native pump control loop or native irrigation shot engine. Existing YAML automations or the optional blueprint remain responsible for deciding when shots may run. The same actions are also exposed as integration-managed button entities where available, while the services remain available through **Developer Tools → Services/Actions**.
 
 ### `growassistant_crop_steering.reset_cycle`
 
@@ -214,6 +217,14 @@ Prepares helper state so existing Home Assistant YAML/automation logic can begin
 
 This service does **not** turn on the pump.
 
+### `growassistant_crop_steering.complete_p1`
+
+Completes an already active P1 without controlling the pump. The optional Shot Engine calls this service only for the intended P1 completion reasons: maximum P1 shots reached, Field Capacity reached, or a configured Drain Sensor becoming wet. A Drain Tray wet/high-water condition remains a safety blocker and is not a P1 completion reason.
+
+The service first calculates the current VWC from the configured sensor or averaged valid values from the configured VWC sensors. It stores that value as **P2 Reference VWC**, then sets **P1 Done** on and finally sets **P1 Active** off. This order keeps the P2 reference available before the phase can leave P1. If no configured VWC sensor has a valid value, the service fails closed and changes neither P2 Reference VWC nor the P1 completion state.
+
+This service does **not** turn on or turn off the pump, reset counters, clear Last Shot, or change P1 Window Opened Today.
+
 ### `growassistant_crop_steering.set_last_shot_now`
 
 Sets the integration-managed **Last Shot** timestamp to the current time. If an existing config entry has a legacy `input_datetime` helper configured, the service mirrors the timestamp to that helper. This is useful for external automations after a completed irrigation shot.
@@ -225,7 +236,6 @@ Clears the integration-managed **Last Shot** timestamp. Legacy `input_datetime` 
 ### `growassistant_crop_steering.stop_pump`
 
 Turns off only the configured pump switch or input_boolean test helper. Use a `switch` for real pump hardware and an `input_boolean` helper for safe test/dummy pump simulation. This is an explicit safety/manual stop service and does not modify cycle state helpers.
-
 
 ## Example dashboards
 
@@ -245,23 +255,39 @@ This repository includes an optional Home Assistant automation blueprint for use
 blueprints/automation/growassistant_crop_steering/shot_engine.yaml
 ```
 
-The blueprint can run conservative P1/P2 shots from the integration's diagnostic sensors and your existing helpers or managed entities. It watches the **Phase**, **P1 Debug**, **P1 Soak Remaining**, and **P2 Soak Remaining** sensors, checks the configured P1/P2 state, turns the selected pump switch or input_boolean test helper on for the configured shot duration, increments the matching managed shot-counter number or legacy counter helper, updates the integration-managed last shot timestamp through `growassistant_crop_steering.set_last_shot_now`, and sends a second delayed pump-off command as a failsafe. Existing legacy blueprint automations can still select external `counter` helpers; new automations may select the integration-managed `number` entities instead.
+**The blueprint is not installed by HACS together with the custom integration.** Install it separately either by importing its raw URL or by copying the file manually.
+
+Blueprint import URL:
+
+```text
+https://raw.githubusercontent.com/TheFreakPinny/ha-growassistant-crop-steering/main/blueprints/automation/growassistant_crop_steering/shot_engine.yaml
+```
+
+The blueprint can run conservative P1/P2 shots from the integration's diagnostic sensors and your existing helpers or managed entities. It watches the **Phase**, **P1 Debug**, **P1 Soak Remaining**, **P2 Soak Remaining**, and **Block Reason** sensors, checks the configured P1/P2 state, turns the selected pump switch or input_boolean test helper on for the configured shot duration, increments the matching managed shot-counter number or legacy counter helper, updates the integration-managed last shot timestamp through `growassistant_crop_steering.set_last_shot_now`, and sends a second delayed pump-off command as a failsafe. Existing legacy blueprint automations can still select external `counter` helpers; new automations may select the integration-managed `number` entities instead.
 
 When **Phase** is `p1_morning`, **P1 Debug** is `ready`, **P1 Active** is off, **P1 Done** is off, and **P1 Window Opened Today** is off, the optional blueprint automatically calls `growassistant_crop_steering.start_p1`. That service prepares P1 state and backdates Last Shot, but does not turn on the pump; the blueprint waits for the next time-pattern or state trigger before running the first P1 shot so startup and shot sequencing stay separate. Users can still press the **Start P1** button manually for testing or one-off preparation.
+
+Once P1 is active, the blueprint completes it only when P1 Debug reports one of the intended completion reasons: P1 shot limit reached, Field Capacity reached, or Drain Sensor wet. It calls `growassistant_crop_steering.complete_p1`, which captures the current averaged VWC as P2 Reference VWC before completing P1. Drain Tray remains a safety-only blocker and does not complete P1.
+
+P2 is fail-closed. In addition to phase `p2_midday`, P2 soak reaching zero, available shots, and a positive P2 target, the blueprint requires the configured Block Reason sensor to report exactly `P2 ready`. Missing, empty, `unknown`, `unavailable`, or any `P2 blocked: ...` state prevents P2 pump activation. A configured Drain Tray that is wet also blocks the P2 branch directly, while the integration Block Reason also prevents `P2 ready` when the tray is unavailable or wet.
 
 Native Python pump control is **not implemented yet**. The blueprint is optional and is provided only for users who intentionally choose to build a Home Assistant automation around the current diagnostic sensors and helper services. Its pump input accepts either a real `switch` pump entity or an `input_boolean` helper for dry-run/testing only. Real pumps should still use proper switch hardware. You remain responsible for confirming the selected entities, shot durations, soak timing, and counter behavior in your own Home Assistant instance.
 
 Because this blueprint can control real irrigation hardware, and because `input_boolean` helpers are only dummy test helpers rather than pump safety devices, you must provide an independent physical/electrical failsafe such as an appropriate float switch, leak detector cutoff, timer relay, fused circuit, or other hardware protection. Do not rely on Home Assistant, this integration, the blueprint, or software logic alone to prevent flooding, pump damage, crop damage, or electrical hazards.
 
-### Installing the blueprint manually
+### Installing/importing the blueprint
 
-Copy the blueprint file into your Home Assistant configuration directory at the same relative path:
+To import it through the Home Assistant UI, open **Settings → Automations & scenes → Blueprints**, choose **Import Blueprint**, and use the raw URL shown above. Review the imported blueprint before creating an automation from it.
+
+Alternatively, copy the blueprint file into your Home Assistant configuration directory at the same relative path:
 
 ```text
 blueprints/automation/growassistant_crop_steering/shot_engine.yaml
 ```
 
 Then reload automations/blueprints or restart Home Assistant, create an automation from the blueprint, and review every input before enabling it.
+
+For a safe functional dry-run, select an `input_boolean` as the blueprint pump input so the control sequence can be tested without energizing real pump hardware.
 
 ## Phase states
 
@@ -276,7 +302,7 @@ The phase sensor can report these states:
 
 ## Safety warning
 
-This integration is intended for irrigation diagnostics and basic helper services. Full automatic pump control is not implemented in v0.1; the only pump-facing service is the explicit manual/safety `growassistant_crop_steering.stop_pump` service, which turns off the configured `switch` or `input_boolean` test helper.
+This integration is intended for irrigation diagnostics and basic helper services. A native automatic pump-control engine is not implemented in v0.1. Pump-on control is available only through the optional blueprint or user-created Home Assistant automations; the native pump-facing service is the explicit manual/safety `growassistant_crop_steering.stop_pump` service, which turns off the configured `switch` or `input_boolean` test helper.
 
 Future pump control should always use a physical/electrical failsafe and Home Assistant failsafe automation. Do not rely on Home Assistant, this integration, or software logic alone to prevent flooding, pump damage, crop damage, or electrical hazards.
 
@@ -284,7 +310,7 @@ Future pump control should always use a physical/electrical failsafe and Home As
 
 - **v0.1 initial release**
   - Read-only diagnostic setup with status, phase, soak countdown, and block reason sensors.
-  - Optional helper services for reset, P1 start preparation, and manual/safety pump stop workflows.
+  - Optional helper services for reset, P1 preparation/completion, timestamp maintenance, and manual/safety pump stop workflows.
   - Optional Home Assistant automation blueprint for users who intentionally choose YAML-based shot orchestration.
 - **Future native Python irrigation engine**
   - Native integration-side irrigation engine with appropriate safeguards and controls.
