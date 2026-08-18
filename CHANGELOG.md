@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.1.8 - 2026-08-18
+
+Release focused on safer P1/P2 orchestration, configurable entity assignments, and Home Assistant dry-run validation.
+
+### Added
+
+- Added editable external entity assignments under **Settings → Devices & services → GrowAssistant – Crop Steering → Configure** without removing and re-adding the integration.
+- Added support for one or multiple VWC sensors with averaging of valid numeric values.
+- Added `growassistant_crop_steering.complete_p1`, which captures the current averaged VWC as P2 Reference VWC before setting P1 Done and disabling P1 Active.
+- Added automatic P1 preparation in the optional Shot Engine blueprint; `start_p1` prepares state but does not turn on the pump, and the first P1 shot is deferred to a later trigger.
+
+### Changed
+
+- Options now override initial config-entry data while keeping backward compatibility; cleared optional drain assignments no longer fall back to stale setup values.
+- P1 completion is limited to max P1 shots reached, Field Capacity reached, or configured Drain Sensor wet. Drain Tray remains a safety blocker only.
+- P2 shot gating is now fail-closed and requires Block Reason to report exactly `P2 ready` in addition to the existing phase, soak, shot-count, and positive-target checks.
+- Drain Tray safety now blocks P2 as well; unavailable or wet configured Drain Tray states prevent `P2 ready`.
+- The optional Shot Engine pump selector supports both `switch` and `input_boolean` so dry-runs can use a dummy helper.
+
+### Safety
+
+- Missing, unavailable, unknown, empty, or otherwise blocked P2 Block Reason states prevent pump activation.
+- `complete_p1` fails closed when no valid VWC is available and leaves P1/P2 state unchanged.
+- Pump-on control remains exclusively in the optional Home Assistant blueprint or user-created automations; no native Python irrigation engine is included.
+- HACS installs the custom integration only and does not automatically install the optional Shot Engine blueprint.
+- Independent physical/electrical failsafes remain required for real irrigation hardware.
+
+### Manual Home Assistant validation
+
+- P1 auto-start, deferred first shot, shot duration/pump-off, counter increment, Last Shot update, max-shots completion, P2 Reference VWC capture, P1 Done/P1 Active transition, and P1→P2 phase transition were dry-run tested with an `input_boolean` test pump.
+- With Block Reason `P2 blocked: VWC drop not reached`, P2 soak at 0, and shots still available, no P2 shot occurred.
+- After creating a valid `P2 ready` state, exactly one P2 test shot occurred, the counter reached target, and the phase transitioned to `p3_dryback`.
+
 ## v0.1.7 - 2026-06-15
 
 Bugfix release for sensor-mode P1 phase transitions and diagnostics.
