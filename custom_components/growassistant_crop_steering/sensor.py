@@ -66,6 +66,7 @@ from .const import (
     SIGNAL_LAST_SHOT_UPDATED,
     VERSION,
 )
+from .vwc import calculate_vwc_state, normalize_vwc_sensors
 
 
 _PHASE_OFF = "off"
@@ -137,52 +138,6 @@ _OPTIONAL_BINARY_WET_STATES = {STATE_ON, "wet", "open", "problem"}
 _OPTIONAL_BINARY_CLEAR_STATES = {"off", "dry", "closed", "clear"}
 
 
-def _normalize_vwc_sensors(config_value: Any) -> list[str]:
-    """Return configured VWC sensors as a list of entity IDs."""
-    if isinstance(config_value, str):
-        return [config_value] if config_value else []
-
-    if isinstance(config_value, list):
-        return [entity_id for entity_id in config_value if isinstance(entity_id, str)]
-
-    return []
-
-
-def _calculate_vwc_state(
-    hass: HomeAssistant,
-    config_value: Any,
-) -> dict[str, Any]:
-    """Return averaged VWC state and diagnostics for configured sensors."""
-    vwc_sensors = _normalize_vwc_sensors(config_value)
-    vwc_values: dict[str, float] = {}
-
-    for entity_id in vwc_sensors:
-        state = hass.states.get(entity_id)
-        if state is None or state.state in _UNAVAILABLE_STATES:
-            continue
-
-        try:
-            vwc_values[entity_id] = float(state.state)
-        except (TypeError, ValueError):
-            continue
-
-    vwc_valid_count = len(vwc_values)
-    if vwc_valid_count == 1:
-        vwc = next(iter(vwc_values.values()))
-    elif vwc_valid_count > 1:
-        vwc = sum(vwc_values.values()) / vwc_valid_count
-    else:
-        vwc = None
-
-    return {
-        "vwc": vwc,
-        "vwc_sensors": vwc_sensors,
-        "vwc_values": vwc_values,
-        "vwc_valid_count": vwc_valid_count,
-        "vwc_average": vwc,
-    }
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -235,8 +190,7 @@ class GrowAssistantStatusSensor(SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return selected entities and configured setup options for diagnostics."""
         return {
-            key: configured_entity_value(self._entry, key)
-            for key in CONFIG_ENTRY_KEYS
+            key: configured_entity_value(self._entry, key) for key in CONFIG_ENTRY_KEYS
         }
 
 
@@ -639,9 +593,7 @@ def _calculate_p1_debug(
     p1_s = _minutes_to_seconds(
         _get_numeric_state(hass, entry, CONF_P1_DURATION_MIN, missing_entities)
     )
-    p1_start_vwc = _get_numeric_state(
-        hass, entry, CONF_P1_START_VWC, missing_entities
-    )
+    p1_start_vwc = _get_numeric_state(hass, entry, CONF_P1_START_VWC, missing_entities)
     field_capacity_vwc = _get_numeric_state(
         hass, entry, CONF_FIELD_CAPACITY_VWC, missing_entities
     )
@@ -682,7 +634,7 @@ def _calculate_p1_debug(
         )
     )
 
-    vwc_state = _calculate_vwc_state(
+    vwc_state = calculate_vwc_state(
         hass, configured_entity_value(entry, CONF_VWC_SENSOR)
     )
     vwc = vwc_state["vwc"]
@@ -691,9 +643,7 @@ def _calculate_p1_debug(
         vwc is not None and p1_start_vwc is not None and vwc <= p1_start_vwc
     )
     vwc_below_field_capacity = (
-        vwc is not None
-        and field_capacity_vwc is not None
-        and vwc < field_capacity_vwc
+        vwc is not None and field_capacity_vwc is not None and vwc < field_capacity_vwc
     )
 
     p1_soak_state = _calculate_soak_remaining(
@@ -866,7 +816,7 @@ def _calculate_block_reason(
     missing_entities = list(phase_attributes.get("missing_entities", []))
     _collect_missing_required_entities(hass, entry, missing_entities)
 
-    vwc_state = _calculate_vwc_state(
+    vwc_state = calculate_vwc_state(
         hass, configured_entity_value(entry, CONF_VWC_SENSOR)
     )
     vwc = vwc_state["vwc"]
@@ -1125,12 +1075,12 @@ def _collect_missing_required_entities(
     for key in _REQUIRED_BLOCK_REASON_KEYS:
         entity_id = configured_entity_value(entry, key)
         if key == CONF_VWC_SENSOR:
-            vwc_sensors = _normalize_vwc_sensors(entity_id)
+            vwc_sensors = normalize_vwc_sensors(entity_id)
             if not vwc_sensors:
                 missing_entities.append(key)
                 continue
 
-            vwc_state = _calculate_vwc_state(hass, entity_id)
+            vwc_state = calculate_vwc_state(hass, entity_id)
             if vwc_state["vwc_valid_count"] == 0:
                 missing_entities.extend(vwc_sensors)
             continue
@@ -1151,7 +1101,7 @@ def _configured_required_entities(entry: ConfigEntry) -> set[str]:
     for key in (*_REQUIRED_BLOCK_REASON_KEYS, *NUMERIC_SETTING_KEYS):
         value = configured_entity_value(entry, key)
         if key == CONF_VWC_SENSOR:
-            configured_required.update(_normalize_vwc_sensors(value))
+            configured_required.update(normalize_vwc_sensors(value))
         elif isinstance(value, str) and value:
             configured_required.add(value)
         elif value is None:

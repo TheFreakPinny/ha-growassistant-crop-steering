@@ -232,6 +232,23 @@ action:
         sequence:
           - service: growassistant_crop_steering.start_p1
 
+      - alias: "Complete P1 when target reached"
+        conditions:
+          - condition: template
+            value_template: "{{ is_state(phase_sensor_entity, 'p1_morning') }}"
+          - condition: template
+            value_template: "{{ is_state(p1_active_entity, 'on') }}"
+          - condition: template
+            value_template: "{{ is_state(p1_done_entity, 'off') }}"
+          - condition: template
+            value_template: >-
+              {% set reasons = state_attr(p1_debug_entity, 'blocking_reasons') | default([], true) %}
+              {{ reasons | select('in', ['p1_shot_limit_reached',
+                                         'field_capacity_reached',
+                                         'drain_sensor_wet']) | list | count > 0 }}
+        sequence:
+          - service: growassistant_crop_steering.complete_p1
+
       - alias: "Run a P1 morning shot"
         conditions:
           - condition: template

@@ -12,6 +12,7 @@ VERSION = "0.1.7"
 DEFAULT_NAME = NAME
 SERVICE_RESET_CYCLE = "reset_cycle"
 SERVICE_START_P1 = "start_p1"
+SERVICE_COMPLETE_P1 = "complete_p1"
 SERVICE_STOP_PUMP = "stop_pump"
 SERVICE_SET_LAST_SHOT_NOW = "set_last_shot_now"
 SERVICE_CLEAR_LAST_SHOT = "clear_last_shot"
