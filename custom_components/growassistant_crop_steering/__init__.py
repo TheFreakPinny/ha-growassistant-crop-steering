@@ -177,6 +177,8 @@ class _CycleResetCoordinator:
         self.last_cycle: str | None = None
         self._lock = asyncio.Lock()
         self._remove_listeners: list[Any] = []
+        self._sunrise: time | None = None
+        self._sunset: time | None = None
 
     async def async_start(self) -> None:
         """Load the durable marker, install listeners, and catch up if needed."""
@@ -186,6 +188,8 @@ class _CycleResetCoordinator:
 
         sunrise_entity = configured_entity_value(self.entry, CONF_LED_SUNRISE)
         sunset_entity = configured_entity_value(self.entry, CONF_LED_SUNSET)
+        self._sunrise = _configured_time(self.hass, sunrise_entity)
+        self._sunset = _configured_time(self.hass, sunset_entity)
         tracked_entities = [
             entity_id
             for entity_id in (sunrise_entity, sunset_entity)
@@ -209,9 +213,42 @@ class _CycleResetCoordinator:
     @callback
     def _async_time_helper_changed(self, event: Event) -> None:
         """Reschedule when either configured time helper changes."""
-        self._remove_sunrise_listener()
-        self._schedule_sunrise()
-        self.hass.async_create_task(self.async_check())
+        self.hass.async_create_task(self._async_apply_time_helper_change())
+
+    async def _async_apply_time_helper_change(
+        self, now: datetime | None = None
+    ) -> None:
+        """Apply new light times without redefining an already-reset grow day."""
+        now = now or dt_util.now()
+        async with self._lock:
+            old_cycle = _light_cycle_start(now, self._sunrise, self._sunset)
+            sunrise_entity = configured_entity_value(self.entry, CONF_LED_SUNRISE)
+            sunset_entity = configured_entity_value(self.entry, CONF_LED_SUNSET)
+            new_sunrise = _configured_time(self.hass, sunrise_entity)
+            new_sunset = _configured_time(self.hass, sunset_entity)
+
+            # A time-helper edit changes the timestamp used as the cycle marker.
+            # If the old cycle was already reset, carry that fact to the same
+            # logical grow day under the new sunrise instead of resetting again.
+            if (
+                old_cycle is not None
+                and old_cycle.isoformat() == self.last_cycle
+                and new_sunrise is not None
+            ):
+                replacement = datetime.combine(
+                    old_cycle.date(), new_sunrise, tzinfo=old_cycle.tzinfo
+                ).isoformat()
+                self.last_cycle = replacement
+                await self.store.async_save({"last_cycle": replacement})
+
+            self._sunrise = new_sunrise
+            self._sunset = new_sunset
+            self._remove_sunrise_listener()
+            self._schedule_sunrise()
+
+        # This still enables catch-up when previously unavailable helpers become
+        # valid, while the carried marker prevents a second reset after an edit.
+        await self.async_check(now)
 
     def _remove_sunrise_listener(self) -> None:
         """Remove only the daily sunrise listener, if installed."""
@@ -220,9 +257,7 @@ class _CycleResetCoordinator:
 
     def _schedule_sunrise(self) -> None:
         """Schedule a callback at the currently configured sunrise time."""
-        sunrise = _configured_time(
-            self.hass, configured_entity_value(self.entry, CONF_LED_SUNRISE)
-        )
+        sunrise = self._sunrise
         if sunrise is None:
             return
         self._remove_listeners.append(
@@ -278,10 +313,17 @@ def _current_light_cycle_start(
     """Return the active cycle's sunrise, including cycles crossing midnight."""
     sunrise = _configured_time(hass, configured_entity_value(entry, CONF_LED_SUNRISE))
     sunset = _configured_time(hass, configured_entity_value(entry, CONF_LED_SUNSET))
+    now = now or dt_util.now()
+    return _light_cycle_start(now, sunrise, sunset)
+
+
+def _light_cycle_start(
+    now: datetime, sunrise: time | None, sunset: time | None
+) -> datetime | None:
+    """Return the active cycle start for explicit light schedule values."""
     if sunrise is None or sunset is None:
         return None
 
-    now = now or dt_util.now()
     today_start = datetime.combine(now.date(), sunrise, tzinfo=now.tzinfo)
     now_time = now.timetz().replace(tzinfo=None)
     if sunrise < sunset:
