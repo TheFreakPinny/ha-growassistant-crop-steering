@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.9 - 2026-08-20
+
+Bugfix release for reliably resetting cycle state at the start of each grow day.
+
+### Fixed
+
+- Added an automatic cycle reset when a new LED light cycle starts at sunrise.
+- The reset runs exactly once per grow day and clears P1 Active, P1 Done, P1 Window Opened Today, P1 Shots Done, P2 Shots Done, and P2 Reference VWC while preserving Last Shot.
+- The automatic reset does not control or activate pumps.
+- A persistent cycle marker prevents duplicate resets after Home Assistant restarts.
+- If Home Assistant starts during an already active light cycle, a missed reset is performed once.
+- Overnight light cycles such as 19:00–07:00 are supported.
+- Changing sunrise or sunset helpers during an active cycle does not trigger another reset; the updated sunrise applies to the next grow day.
+
 ## v0.1.8 - 2026-08-18
 
 Release focused on editable configuration, explicit P1 completion, and fail-closed P2 pump gating in the optional Shot Engine blueprint.
