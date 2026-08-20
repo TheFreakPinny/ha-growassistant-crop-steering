@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import asyncio
+from datetime import datetime, time, timedelta
 import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_change,
+)
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .config import configured_entity_value
 from .const import (
     BOOLEAN_STATE_DEFAULTS,
     CONF_LAST_SHOT,
+    CONF_LED_SUNRISE,
+    CONF_LED_SUNSET,
     CONF_P1_ACTIVE,
     CONF_P1_DONE,
     CONF_P1_SHOTS_DONE,
@@ -64,6 +72,10 @@ SIGNAL_NUMBER_STATE_UPDATED = f"{DOMAIN}_number_state_updated"
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_DATETIME = "datetime"
 ATTR_VALUE = "value"
+
+STORAGE_VERSION = 1
+STORAGE_KEY_PREFIX = f"{DOMAIN}.cycle_reset"
+DATA_AUTO_RESET = "auto_reset"
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -133,12 +145,196 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up GrowAssistant Crop Steering from a config entry."""
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    coordinator = _CycleResetCoordinator(hass, entry)
+    hass.data.setdefault(DOMAIN, {}).setdefault(DATA_AUTO_RESET, {})[entry.entry_id] = (
+        coordinator
+    )
+    await coordinator.async_start()
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a GrowAssistant Crop Steering config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        coordinator = (
+            hass.data.get(DOMAIN, {}).get(DATA_AUTO_RESET, {}).pop(entry.entry_id, None)
+        )
+        if coordinator is not None:
+            coordinator.async_stop()
+    return unloaded
+
+
+class _CycleResetCoordinator:
+    """Reset an entry once at the beginning of each configured light cycle."""
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self.hass = hass
+        self.entry = entry
+        self.store: Store[dict[str, str]] = Store(
+            hass, STORAGE_VERSION, f"{STORAGE_KEY_PREFIX}.{entry.entry_id}"
+        )
+        self.last_cycle: str | None = None
+        self._lock = asyncio.Lock()
+        self._remove_listeners: list[Any] = []
+        self._sunrise: time | None = None
+        self._sunset: time | None = None
+
+    async def async_start(self) -> None:
+        """Load the durable marker, install listeners, and catch up if needed."""
+        stored = await self.store.async_load()
+        if stored is not None:
+            self.last_cycle = stored.get("last_cycle")
+
+        sunrise_entity = configured_entity_value(self.entry, CONF_LED_SUNRISE)
+        sunset_entity = configured_entity_value(self.entry, CONF_LED_SUNSET)
+        self._sunrise = _configured_time(self.hass, sunrise_entity)
+        self._sunset = _configured_time(self.hass, sunset_entity)
+        tracked_entities = [
+            entity_id
+            for entity_id in (sunrise_entity, sunset_entity)
+            if entity_id is not None
+        ]
+        if tracked_entities:
+            self._remove_listeners.append(
+                async_track_state_change_event(
+                    self.hass, tracked_entities, self._async_time_helper_changed
+                )
+            )
+        self._schedule_sunrise()
+        await self.async_check()
+
+    def async_stop(self) -> None:
+        """Remove all registered listeners."""
+        for remove_listener in self._remove_listeners:
+            remove_listener()
+        self._remove_listeners.clear()
+
+    @callback
+    def _async_time_helper_changed(self, event: Event) -> None:
+        """Reschedule when either configured time helper changes."""
+        self.hass.async_create_task(self._async_apply_time_helper_change())
+
+    async def _async_apply_time_helper_change(
+        self, now: datetime | None = None
+    ) -> None:
+        """Apply new light times without redefining an already-reset grow day."""
+        now = now or dt_util.now()
+        async with self._lock:
+            old_cycle = _light_cycle_start(now, self._sunrise, self._sunset)
+            sunrise_entity = configured_entity_value(self.entry, CONF_LED_SUNRISE)
+            sunset_entity = configured_entity_value(self.entry, CONF_LED_SUNSET)
+            new_sunrise = _configured_time(self.hass, sunrise_entity)
+            new_sunset = _configured_time(self.hass, sunset_entity)
+
+            # A time-helper edit changes the timestamp used as the cycle marker.
+            # If the old cycle was already reset, carry that fact to the same
+            # logical grow day under the new sunrise instead of resetting again.
+            if (
+                old_cycle is not None
+                and old_cycle.isoformat() == self.last_cycle
+                and new_sunrise is not None
+            ):
+                replacement = datetime.combine(
+                    old_cycle.date(), new_sunrise, tzinfo=old_cycle.tzinfo
+                ).isoformat()
+                self.last_cycle = replacement
+                await self.store.async_save({"last_cycle": replacement})
+
+            self._sunrise = new_sunrise
+            self._sunset = new_sunset
+            self._remove_sunrise_listener()
+            self._schedule_sunrise()
+
+        # This still enables catch-up when previously unavailable helpers become
+        # valid, while the carried marker prevents a second reset after an edit.
+        await self.async_check(now)
+
+    def _remove_sunrise_listener(self) -> None:
+        """Remove only the daily sunrise listener, if installed."""
+        if len(self._remove_listeners) > 1:
+            self._remove_listeners.pop()()
+
+    def _schedule_sunrise(self) -> None:
+        """Schedule a callback at the currently configured sunrise time."""
+        sunrise = self._sunrise
+        if sunrise is None:
+            return
+        self._remove_listeners.append(
+            async_track_time_change(
+                self.hass,
+                self._async_sunrise,
+                hour=sunrise.hour,
+                minute=sunrise.minute,
+                second=sunrise.second,
+            )
+        )
+
+    async def _async_sunrise(self, now: datetime) -> None:
+        """Handle the configured daily sunrise."""
+        await self.async_check(now)
+
+    async def async_check(self, now: datetime | None = None) -> bool:
+        """Reset once if a not-yet-recorded light cycle is currently active."""
+        async with self._lock:
+            cycle_start = _current_light_cycle_start(self.hass, self.entry, now)
+            if cycle_start is None:
+                return False
+            cycle_marker = cycle_start.isoformat()
+            if cycle_marker == self.last_cycle:
+                return False
+
+            await _reset_cycle_for_entry(self.hass, self.entry)
+            self.last_cycle = cycle_marker
+            await self.store.async_save({"last_cycle": cycle_marker})
+            _LOGGER.info(
+                "GrowAssistant Crop Steering automatically reset config entry %s for light cycle %s",
+                self.entry.entry_id,
+                cycle_marker,
+            )
+            return True
+
+
+def _configured_time(hass: HomeAssistant, entity_id: str | None) -> time | None:
+    """Read a time value from a configured input_datetime helper."""
+    if entity_id is None or (state := hass.states.get(entity_id)) is None:
+        return None
+    try:
+        return time.fromisoformat(state.state.rsplit(" ", maxsplit=1)[-1]).replace(
+            tzinfo=None
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _current_light_cycle_start(
+    hass: HomeAssistant, entry: ConfigEntry, now: datetime | None = None
+) -> datetime | None:
+    """Return the active cycle's sunrise, including cycles crossing midnight."""
+    sunrise = _configured_time(hass, configured_entity_value(entry, CONF_LED_SUNRISE))
+    sunset = _configured_time(hass, configured_entity_value(entry, CONF_LED_SUNSET))
+    now = now or dt_util.now()
+    return _light_cycle_start(now, sunrise, sunset)
+
+
+def _light_cycle_start(
+    now: datetime, sunrise: time | None, sunset: time | None
+) -> datetime | None:
+    """Return the active cycle start for explicit light schedule values."""
+    if sunrise is None or sunset is None:
+        return None
+
+    today_start = datetime.combine(now.date(), sunrise, tzinfo=now.tzinfo)
+    now_time = now.timetz().replace(tzinfo=None)
+    if sunrise < sunset:
+        return today_start if sunrise <= now_time < sunset else None
+    if sunrise > sunset:
+        if now_time >= sunrise:
+            return today_start
+        if now_time < sunset:
+            return today_start - timedelta(days=1)
+        return None
+    return today_start if now_time >= sunrise else today_start - timedelta(days=1)
 
 
 def _entries_for_service(
