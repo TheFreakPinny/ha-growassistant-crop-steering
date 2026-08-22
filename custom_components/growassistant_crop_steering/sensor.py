@@ -865,6 +865,7 @@ def _calculate_debug(
     attributes = {
         **p1_attributes,
         "phase": phase,
+        "block_reason": block_reason,
         "until_off_s": phase_attributes.get("until_off_s"),
         "vwc_valid_count": block_attributes["vwc_valid_count"],
         "vwc_average": block_attributes["vwc_average"],
@@ -899,16 +900,6 @@ def _calculate_debug(
             "optional_unavailable_entities"
         ],
     }
-
-    # The block-reason calculation describes the current phase and is presented
-    # as a diagnostic only; it does not add a new control or interval gate.
-    if "blocked:" in block_reason or block_reason == "missing required entity":
-        attributes["blocking_reasons"] = [block_reason]
-    elif block_reason.endswith("ready"):
-        attributes["passed_conditions"] = [
-            *attributes["passed_conditions"],
-            block_reason,
-        ]
 
     return attributes
 

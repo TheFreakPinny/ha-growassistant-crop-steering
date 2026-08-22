@@ -117,4 +117,7 @@ def test_general_debug_combines_existing_calculations_without_side_effects() -> 
     assert attributes["p2_soak_remaining_s"] == 120
     assert attributes["drain_sensor_available"] is False
     assert attributes["optional_unavailable_entities"] == ["binary_sensor.drain"]
+    assert attributes["block_reason"] == "P2 blocked: soak active"
+    assert attributes["blocking_reasons"] == []
+    assert attributes["passed_conditions"] == ["vwc_valid"]
     hass.services.assert_not_called()
