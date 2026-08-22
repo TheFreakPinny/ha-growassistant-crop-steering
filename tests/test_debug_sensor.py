@@ -129,6 +129,7 @@ def _phase_diagnostic_inputs():
     phase = {"led_day": True, "p2_time_ok": True}
     p1 = {
         "p1_mode": "sensor",
+        "p1_active": False,
         "p1_done": True,
         "p1_window_active": True,
         "p1_window_opened_today": False,
@@ -160,16 +161,78 @@ def _phase_diagnostic_inputs():
     return phase, p1, block
 
 
-def test_p1_diagnostics_are_p1_only_and_legacy_calculator_is_unchanged() -> None:
-    """General P1 diagnostics use new names without altering legacy output."""
+def test_p1_waiting_to_start_evaluates_start_conditions() -> None:
+    """A waiting P1 reports its mode, light, window, and daily availability."""
     phase, p1, block = _phase_diagnostic_inputs()
-    p1["p1_done"] = False
+    p1.update(
+        {
+            "p1_done": False,
+            "p1_window_active": False,
+            "p1_window_opened_today": True,
+        }
+    )
 
     result = sensor._calculate_phase_diagnostics("p1_morning", phase, p1, block)
 
     assert "p1_mode_sensor" in result["passed_conditions"]
-    assert "shot_limit_available" in result["passed_conditions"]
+    assert "led_day_true" in result["passed_conditions"]
+    assert "p1_window_not_active" in result["blocking_reasons"]
+    assert "p1_window_already_opened_today" in result["blocking_reasons"]
     assert not any(reason.startswith("p2_") for reason in result["blocking_reasons"])
+
+
+def test_active_p1_ignores_start_only_conditions() -> None:
+    """An active P1 continues independently of its original start window."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    phase["led_day"] = False
+    p1.update(
+        {
+            "p1_active": True,
+            "p1_mode": "manual",
+            "p1_window_active": False,
+            "p1_window_opened_today": True,
+        }
+    )
+
+    result = sensor._calculate_phase_diagnostics("p1_morning", phase, p1, block)
+
+    assert "p1_already_active" in result["passed_conditions"]
+    assert "p1_window_not_active" not in result["blocking_reasons"]
+    assert "p1_window_already_opened_today" not in result["blocking_reasons"]
+    assert "led_day_false" not in result["blocking_reasons"]
+    assert "p1_mode_manual" not in result["blocking_reasons"]
+
+
+@pytest.mark.parametrize(
+    ("p1_updates", "block_updates", "reason"),
+    [
+        ({"soak_ok": False}, {}, "soak_not_finished"),
+        ({"p1_shots_left": 0}, {}, "p1_shot_limit_reached"),
+        (
+            {},
+            {"drain_sensor_configured": True, "drain_sensor_available": False},
+            "drain_sensor_unavailable",
+        ),
+        ({}, {"drain_tray_wet": True}, "drain_tray_wet"),
+    ],
+)
+def test_active_p1_keeps_shot_safety_diagnostics(
+    p1_updates, block_updates, reason
+) -> None:
+    """Active P1 still reports soak, limit, and drain shot blockers."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    p1.update({"p1_active": True, **p1_updates})
+    block.update(block_updates)
+
+    result = sensor._calculate_phase_diagnostics("p1_morning", phase, p1, block)
+
+    assert reason in result["blocking_reasons"]
+    assert "p1_already_active" in result["passed_conditions"]
+
+
+def test_legacy_p1_debug_calculator_remains_unchanged() -> None:
+    """The legacy debug entity continues to use its original calculator."""
+    _phase, p1, _block = _phase_diagnostic_inputs()
     # The legacy entity still delegates exclusively to its original calculator.
     entity = sensor.GrowAssistantP1DebugSensor(SimpleNamespace(), _entry())
     with patch.object(

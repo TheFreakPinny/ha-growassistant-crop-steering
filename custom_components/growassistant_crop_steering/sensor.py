@@ -955,24 +955,38 @@ def _calculate_phase_diagnostics(
         }
 
     if phase == _PHASE_P1_MORNING:
-        checks = (
-            (
-                p1_attributes.get("p1_mode") == MODE_SENSOR,
-                "p1_mode_sensor",
-                "p1_mode_manual",
-            ),
-            (led_day is True, "led_day_true", "led_day_false"),
-            (
-                p1_attributes.get("p1_window_active") is True,
-                "p1_window_active",
-                "p1_window_not_active",
-            ),
-            (not p1_attributes.get("p1_done"), "p1_not_done", "p1_already_done"),
-            (
-                not p1_attributes.get("p1_window_opened_today"),
-                "p1_window_available",
-                "p1_window_already_opened_today",
-            ),
+        if p1_attributes.get("p1_active"):
+            passed.append("p1_already_active")
+        else:
+            start_checks = (
+                (
+                    p1_attributes.get("p1_mode") == MODE_SENSOR,
+                    "p1_mode_sensor",
+                    "p1_mode_manual",
+                ),
+                (led_day is True, "led_day_true", "led_day_false"),
+                (
+                    p1_attributes.get("p1_window_active") is True,
+                    "p1_window_active",
+                    "p1_window_not_active",
+                ),
+                (
+                    not p1_attributes.get("p1_done"),
+                    "p1_not_done",
+                    "p1_already_done",
+                ),
+                (
+                    not p1_attributes.get("p1_window_opened_today"),
+                    "p1_window_available",
+                    "p1_window_already_opened_today",
+                ),
+            )
+            for condition, passed_name, blocked_name in start_checks:
+                (passed if condition else blocking).append(
+                    passed_name if condition else blocked_name
+                )
+
+        shot_checks = (
             (p1_attributes.get("vwc_valid") is True, "vwc_valid", "vwc_invalid"),
             (
                 p1_attributes.get("vwc_below_start") is True,
@@ -995,7 +1009,7 @@ def _calculate_phase_diagnostics(
                 "p1_shot_limit_reached",
             ),
         )
-        for condition, passed_name, blocked_name in checks:
+        for condition, passed_name, blocked_name in shot_checks:
             (passed if condition else blocking).append(
                 passed_name if condition else blocked_name
             )
