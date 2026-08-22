@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.10 - 2026-08-22
+
+### Added
+
+- New phase-independent GrowAssistant Debug diagnostic sensor.
+- Aggregated diagnostics for current phase, light timing, VWC, P1, P2, soak timers, shot counters, last-shot state, and drain safety sensors.
+- Human-readable `block_reason` plus detailed machine-readable `blocking_reasons` and `passed_conditions`.
+- English and German translations for the new Debug entity.
+
+### Compatibility
+
+- Existing P1 Debug sensor remains available.
+- Existing Block Reason sensor remains available.
+- No irrigation behavior changes.
+- No pump-control changes.
+
 ## v0.1.9 - 2026-08-20
 
 Bugfix release for reliably resetting cycle state at the start of each grow day.
