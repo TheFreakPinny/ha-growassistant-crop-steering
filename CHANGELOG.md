@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.1.11 - 2026-08-22
+
+### Improved
+
+- General GrowAssistant Debug sensor now reports phase-aware `blocking_reasons` and `passed_conditions`.
+- Added machine-readable `phase_reason` to explain why the current phase was selected.
+- P1 diagnostics now distinguish between start-readiness conditions and active-P1 shot conditions.
+- P2 sensor-mode diagnostics expose VWC/drop, soak, shot-limit, time-window, VWC-cap, and drain conditions without introducing interval gating.
+- P3 diagnostics now distinguish the actual phase-selection reason from operational P2 shot blockers.
+- Light-off P3 reports `light_cycle_ended` without obsolete P1/P2 readiness noise.
+
+### Compatibility
+
+- Existing P1 Debug sensor remains unchanged.
+- Existing Block Reason sensor remains unchanged.
+- No irrigation behavior changes.
+- No Blueprint changes.
+- No pump-control changes.
+
 ## v0.1.10 - 2026-08-22
 
 ### Added
