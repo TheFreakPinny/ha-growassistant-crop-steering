@@ -126,6 +126,12 @@ _P1_DEBUG_SENSOR = SensorEntityDescription(
     icon="mdi:bug-check-outline",
 )
 
+_DEBUG_SENSOR = SensorEntityDescription(
+    key="debug",
+    translation_key="debug",
+    icon="mdi:bug-check-outline",
+)
+
 _LAST_SHOT_SENSOR = SensorEntityDescription(
     key=CONF_LAST_SHOT,
     translation_key="last_shot",
@@ -165,6 +171,7 @@ async def async_setup_entry(
             ),
             GrowAssistantBlockReasonSensor(hass, entry),
             GrowAssistantP1DebugSensor(hass, entry),
+            GrowAssistantDebugSensor(hass, entry),
         ]
     )
 
@@ -384,6 +391,41 @@ class GrowAssistantP1DebugSensor(SensorEntity):
         return _calculate_p1_debug(self.hass, self._entry)[1]
 
 
+class GrowAssistantDebugSensor(SensorEntity):
+    """Expose phase-independent, read-only crop steering diagnostics."""
+
+    entity_description = _DEBUG_SENSOR
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialize the general debug sensor."""
+        self.hass = hass
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_debug"
+        self._attr_device_info = _device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to managed last-shot updates."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_LAST_SHOT_UPDATED}_{self._entry.entry_id}",
+                self.async_write_ha_state,
+            )
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the current crop steering phase."""
+        return _calculate_phase(self.hass, self._entry)[0]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the calculations already used by diagnostic sensors."""
+        return _calculate_debug(self.hass, self._entry)
+
+
 def _configured_mode(entry: ConfigEntry, config_key: str, default: str) -> str:
     """Return a configured P1/P2 mode from options, data, or a safe default."""
     for source in (entry.options, entry.data):
@@ -494,6 +536,7 @@ def _calculate_phase(
         "p2_target": p2_target_value,
         "p2_done": p2_done_value,
         "p2_shots_left": p2_shots_left,
+        "p2_end_offset_s": p2_end_offset_s,
         "p2_time_ok": p2_time_ok,
         "missing_entities": missing_entities,
         "p1_mode": p1_mode,
@@ -805,6 +848,60 @@ def _calculate_p1_debug(
     }
 
     return state, attributes
+
+
+def _calculate_debug(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> dict[str, Any]:
+    """Combine existing phase, P1, and block-reason calculations."""
+    phase, phase_attributes = _calculate_phase(hass, entry)
+    _p1_state, p1_attributes = _calculate_p1_debug(hass, entry)
+    block_reason, block_attributes = _calculate_block_reason(hass, entry)
+    last_shot, last_shot_source = _get_last_shot_datetime_with_source(hass, entry)
+
+    p2_shots_done = block_attributes["p2_done"]
+    p2_shots_target = block_attributes["p2_target"]
+    attributes = {
+        **p1_attributes,
+        "phase": phase,
+        "block_reason": block_reason,
+        "until_off_s": phase_attributes.get("until_off_s"),
+        "vwc_valid_count": block_attributes["vwc_valid_count"],
+        "vwc_average": block_attributes["vwc_average"],
+        "vwc_cap_active": block_attributes["vwc_cap_active"],
+        "p2_mode": block_attributes["p2_mode"],
+        "p2_ref_vwc": block_attributes["p2_ref_vwc"],
+        "p2_vwc_drop": block_attributes["p2_vwc_drop"],
+        "p2_drop_threshold": block_attributes["p2_drop_threshold"],
+        "p2_shots_done": p2_shots_done,
+        "p2_shots_target": p2_shots_target,
+        "p2_shots_left": max(0, p2_shots_target - p2_shots_done),
+        "p2_soak_remaining_s": block_attributes["p2_soak_remaining_s"],
+        "p2_end_offset_s": phase_attributes.get("p2_end_offset_s"),
+        "p2_time_ok": phase_attributes.get("p2_time_ok"),
+        "last_shot": last_shot.isoformat() if last_shot is not None else None,
+        "last_shot_source": last_shot_source,
+        "drain_sensor_configured": block_attributes["drain_sensor_configured"],
+        "drain_sensor_entity_id": block_attributes["drain_sensor_entity_id"],
+        "drain_sensor_available": block_attributes["drain_sensor_available"],
+        "drain_sensor_state": block_attributes["drain_sensor_state"],
+        "drain_sensor_ignored": block_attributes["drain_sensor_ignored"],
+        "drain_wet": block_attributes["drain_wet"],
+        "drain_tray_sensor_configured": block_attributes[
+            "drain_tray_sensor_configured"
+        ],
+        "drain_tray_sensor_entity_id": block_attributes["drain_tray_sensor_entity_id"],
+        "drain_tray_sensor_available": block_attributes["drain_tray_sensor_available"],
+        "drain_tray_sensor_state": block_attributes["drain_tray_sensor_state"],
+        "drain_tray_sensor_ignored": block_attributes["drain_tray_sensor_ignored"],
+        "drain_tray_wet": block_attributes["drain_tray_wet"],
+        "optional_unavailable_entities": block_attributes[
+            "optional_unavailable_entities"
+        ],
+    }
+
+    return attributes
 
 
 def _calculate_block_reason(

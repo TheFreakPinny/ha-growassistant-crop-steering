@@ -83,6 +83,17 @@
           "inactive_window": "Inaktives Fenster",
           "missing_required": "Erforderliche Werte fehlen"
         }
+      },
+      "debug": {
+        "name": "Debug",
+        "state": {
+          "off": "Aus",
+          "pre_on": "Vor Licht-an",
+          "p0_transpiration": "P0-Transpiration",
+          "p1_morning": "P1-Morgen",
+          "p2_midday": "P2-Mittag",
+          "p3_dryback": "P3-Dryback"
+        }
       }
     },
     "number": {
