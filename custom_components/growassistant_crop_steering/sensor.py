@@ -854,7 +854,7 @@ def _calculate_debug(
     hass: HomeAssistant,
     entry: ConfigEntry,
 ) -> dict[str, Any]:
-    """Combine existing phase, P1, and block-reason calculations."""
+    """Combine existing calculations with diagnostics for the current phase."""
     phase, phase_attributes = _calculate_phase(hass, entry)
     _p1_state, p1_attributes = _calculate_p1_debug(hass, entry)
     block_reason, block_attributes = _calculate_block_reason(hass, entry)
@@ -862,8 +862,18 @@ def _calculate_debug(
 
     p2_shots_done = block_attributes["p2_done"]
     p2_shots_target = block_attributes["p2_target"]
+    phase_diagnostics = _calculate_phase_diagnostics(
+        phase,
+        phase_attributes,
+        p1_attributes,
+        {
+            **block_attributes,
+            "p2_time_ok": phase_attributes.get("p2_time_ok"),
+        },
+    )
     attributes = {
         **p1_attributes,
+        **phase_diagnostics,
         "phase": phase,
         "block_reason": block_reason,
         "until_off_s": phase_attributes.get("until_off_s"),
@@ -902,6 +912,200 @@ def _calculate_debug(
     }
 
     return attributes
+
+
+def _calculate_phase_diagnostics(
+    phase: str,
+    phase_attributes: dict[str, Any],
+    p1_attributes: dict[str, Any],
+    block_attributes: dict[str, Any],
+) -> dict[str, Any]:
+    """Describe only the conditions relevant to the current phase.
+
+    This deliberately derives its answers from the existing read-only phase, P1,
+    and block-reason calculations.  It does not participate in phase selection or
+    irrigation control.
+    """
+    blocking: list[str] = []
+    passed: list[str] = []
+    missing = block_attributes.get("missing_entities", [])
+    led_day = phase_attributes.get("led_day")
+
+    if missing:
+        blocking.append("required_entity_unavailable")
+
+    if phase in {_PHASE_OFF, _PHASE_PRE_ON, _PHASE_P0_TRANSPIRATION}:
+        if led_day is True:
+            passed.append("led_day_true")
+        else:
+            blocking.append("led_day_false")
+        if phase == _PHASE_P0_TRANSPIRATION:
+            blocking.append("p0_transpiration_active")
+            phase_reason = "p0_transpiration_active"
+        elif missing:
+            phase_reason = "required_entity_unavailable"
+        elif led_day is False:
+            phase_reason = "light_cycle_ended"
+        else:
+            phase_reason = "pre_on"
+        return {
+            "phase_reason": phase_reason,
+            "blocking_reasons": blocking,
+            "passed_conditions": passed,
+        }
+
+    if phase == _PHASE_P1_MORNING:
+        checks = (
+            (
+                p1_attributes.get("p1_mode") == MODE_SENSOR,
+                "p1_mode_sensor",
+                "p1_mode_manual",
+            ),
+            (led_day is True, "led_day_true", "led_day_false"),
+            (
+                p1_attributes.get("p1_window_active") is True,
+                "p1_window_active",
+                "p1_window_not_active",
+            ),
+            (not p1_attributes.get("p1_done"), "p1_not_done", "p1_already_done"),
+            (
+                not p1_attributes.get("p1_window_opened_today"),
+                "p1_window_available",
+                "p1_window_already_opened_today",
+            ),
+            (p1_attributes.get("vwc_valid") is True, "vwc_valid", "vwc_invalid"),
+            (
+                p1_attributes.get("vwc_below_start") is True,
+                "vwc_below_start_threshold",
+                "vwc_above_start_threshold",
+            ),
+            (
+                p1_attributes.get("vwc_below_field_capacity") is True,
+                "vwc_below_field_capacity",
+                "field_capacity_reached",
+            ),
+            (
+                p1_attributes.get("soak_ok") is True,
+                "soak_finished",
+                "soak_not_finished",
+            ),
+            (
+                p1_attributes.get("p1_shots_left", 0) > 0,
+                "shot_limit_available",
+                "p1_shot_limit_reached",
+            ),
+        )
+        for condition, passed_name, blocked_name in checks:
+            (passed if condition else blocking).append(
+                passed_name if condition else blocked_name
+            )
+        _append_drain_diagnostics(block_attributes, blocking, passed)
+        return {
+            "phase_reason": "p1_morning_active",
+            "blocking_reasons": blocking,
+            "passed_conditions": passed,
+        }
+
+    p2_blocking, p2_passed = _calculate_p2_diagnostics(
+        led_day, p1_attributes, block_attributes
+    )
+    blocking.extend(p2_blocking)
+
+    if phase == _PHASE_P2_MIDDAY:
+        passed.extend(p2_passed)
+        phase_reason = blocking[0] if blocking else "p2_midday_active"
+    else:
+        passed.append("p3_dryback_active")
+        if led_day is False:
+            passed.append("led_day_false")
+            # Once the light cycle has ended, P2 readiness is no longer relevant.
+            blocking = [
+                reason for reason in blocking if reason == "required_entity_unavailable"
+            ]
+            phase_reason = "light_cycle_ended"
+        else:
+            passed.append("led_day_true")
+            phase_reason = next(
+                (
+                    reason
+                    for reason in blocking
+                    if reason != "required_entity_unavailable"
+                ),
+                "p3_dryback_active",
+            )
+
+    return {
+        "phase_reason": phase_reason,
+        "blocking_reasons": blocking,
+        "passed_conditions": passed,
+    }
+
+
+def _calculate_p2_diagnostics(
+    led_day: bool | None,
+    p1_attributes: dict[str, Any],
+    block_attributes: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Return P2 readiness conditions without adding interval-based gating."""
+    blocking: list[str] = []
+    passed: list[str] = []
+    p2_mode = block_attributes.get("p2_mode")
+    vwc_valid = block_attributes.get("vwc_valid_count", 0) > 0
+    reference_available = (block_attributes.get("p2_ref_vwc") or 0) > 0
+    drop_threshold = block_attributes.get("p2_drop_threshold")
+    vwc = block_attributes.get("vwc")
+    drop_reached = (
+        vwc is not None and drop_threshold is not None and vwc <= drop_threshold
+    )
+
+    checks = (
+        (p2_mode == MODE_SENSOR, "p2_mode_sensor", "p2_mode_manual"),
+        (led_day is True, "led_day_true", "led_day_false"),
+        (p1_attributes.get("p1_done") is True, "p1_done", "p1_not_done"),
+        (reference_available, "p2_reference_available", "p2_reference_missing"),
+        (
+            block_attributes.get("p2_done", 0) < block_attributes.get("p2_target", 0),
+            "p2_shot_limit_available",
+            "p2_shot_limit_reached",
+        ),
+        (
+            block_attributes.get("p2_time_ok") is True,
+            "p2_time_window_open",
+            "p2_end_offset_reached",
+        ),
+        (vwc_valid, "vwc_valid", "vwc_invalid"),
+        (drop_reached, "vwc_drop_reached", "p2_vwc_drop_not_reached"),
+        (not block_attributes.get("vwc_cap_active"), "vwc_cap_clear", "vwc_cap_active"),
+        (
+            block_attributes.get("p2_soak_remaining_s", 0) == 0,
+            "soak_finished",
+            "p2_soak_active",
+        ),
+    )
+    for condition, passed_name, blocked_name in checks:
+        (passed if condition else blocking).append(
+            passed_name if condition else blocked_name
+        )
+    _append_drain_diagnostics(block_attributes, blocking, passed)
+    return blocking, passed
+
+
+def _append_drain_diagnostics(
+    attributes: dict[str, Any], blocking: list[str], passed: list[str]
+) -> None:
+    """Append shared fail-closed drain diagnostics."""
+    for prefix, condition_name, wet_key in (
+        ("drain_sensor", "drain_sensor", "drain_wet"),
+        ("drain_tray_sensor", "drain_tray", "drain_tray_wet"),
+    ):
+        if attributes.get(f"{prefix}_configured") and not attributes.get(
+            f"{prefix}_available"
+        ):
+            blocking.append(f"{condition_name}_unavailable")
+        elif attributes.get(wet_key):
+            blocking.append(f"{condition_name}_wet")
+        else:
+            passed.append(f"{condition_name}_clear_or_ignored")
 
 
 def _calculate_block_reason(

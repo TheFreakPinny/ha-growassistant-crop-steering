@@ -118,6 +118,118 @@ def test_general_debug_combines_existing_calculations_without_side_effects() -> 
     assert attributes["drain_sensor_available"] is False
     assert attributes["optional_unavailable_entities"] == ["binary_sensor.drain"]
     assert attributes["block_reason"] == "P2 blocked: soak active"
-    assert attributes["blocking_reasons"] == []
-    assert attributes["passed_conditions"] == ["vwc_valid"]
+    assert "p2_soak_active" in attributes["blocking_reasons"]
+    assert "p2_mode_sensor" in attributes["passed_conditions"]
+    assert "p2_interval_available" not in attributes["blocking_reasons"]
     hass.services.assert_not_called()
+
+
+def _phase_diagnostic_inputs():
+    """Return complete, ready sensor-mode diagnostic inputs."""
+    phase = {"led_day": True, "p2_time_ok": True}
+    p1 = {
+        "p1_mode": "sensor",
+        "p1_done": True,
+        "p1_window_active": True,
+        "p1_window_opened_today": False,
+        "vwc_valid": True,
+        "vwc_below_start": True,
+        "vwc_below_field_capacity": True,
+        "soak_ok": True,
+        "p1_shots_left": 1,
+    }
+    block = {
+        "missing_entities": [],
+        "p2_mode": "sensor",
+        "p2_ref_vwc": 50,
+        "p2_drop_threshold": 45,
+        "vwc": 44,
+        "vwc_valid_count": 1,
+        "p2_done": 1,
+        "p2_target": 4,
+        "p2_time_ok": True,
+        "vwc_cap_active": False,
+        "p2_soak_remaining_s": 0,
+        "drain_sensor_configured": False,
+        "drain_sensor_available": True,
+        "drain_wet": False,
+        "drain_tray_sensor_configured": False,
+        "drain_tray_sensor_available": True,
+        "drain_tray_wet": False,
+    }
+    return phase, p1, block
+
+
+def test_p1_diagnostics_are_p1_only_and_legacy_calculator_is_unchanged() -> None:
+    """General P1 diagnostics use new names without altering legacy output."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    p1["p1_done"] = False
+
+    result = sensor._calculate_phase_diagnostics("p1_morning", phase, p1, block)
+
+    assert "p1_mode_sensor" in result["passed_conditions"]
+    assert "shot_limit_available" in result["passed_conditions"]
+    assert not any(reason.startswith("p2_") for reason in result["blocking_reasons"])
+    # The legacy entity still delegates exclusively to its original calculator.
+    entity = sensor.GrowAssistantP1DebugSensor(SimpleNamespace(), _entry())
+    with patch.object(
+        sensor, "_calculate_p1_debug", return_value=("legacy", p1)
+    ) as calc:
+        assert entity.native_value == "legacy"
+        assert entity.extra_state_attributes is p1
+        assert calc.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("updates", "reason"),
+    [
+        ({"p2_soak_remaining_s": 30}, "p2_soak_active"),
+        (
+            {
+                "drain_sensor_configured": True,
+                "drain_sensor_available": False,
+            },
+            "drain_sensor_unavailable",
+        ),
+        ({"p2_time_ok": False}, "p2_end_offset_reached"),
+    ],
+)
+def test_p2_sensor_mode_reports_current_gate(updates, reason) -> None:
+    """P2 reports VWC/drop and current safety gates, never an interval gate."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    block.update(updates)
+
+    result = sensor._calculate_phase_diagnostics("p2_midday", phase, p1, block)
+
+    assert reason in result["blocking_reasons"]
+    assert "p2_mode_sensor" in result["passed_conditions"]
+    assert "vwc_drop_reached" in result["passed_conditions"]
+    assert not any("interval" in item for item in result["blocking_reasons"])
+
+
+def test_p3_after_light_off_discards_obsolete_readiness_failures() -> None:
+    """Light-off P3 explains dryback without stale P1 or P2 failures."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    phase["led_day"] = False
+    p1.update({"p1_done": False, "p1_shots_left": 0})
+    block.update({"p2_time_ok": False, "p2_done": 4})
+
+    result = sensor._calculate_phase_diagnostics("p3_dryback", phase, p1, block)
+
+    assert result == {
+        "phase_reason": "light_cycle_ended",
+        "blocking_reasons": [],
+        "passed_conditions": ["p3_dryback_active", "led_day_false"],
+    }
+
+
+def test_p3_during_light_exposes_p2_end_offset() -> None:
+    """Daytime P3 retains the actual P2 condition that selected dryback."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    block["p2_time_ok"] = False
+
+    result = sensor._calculate_phase_diagnostics("p3_dryback", phase, p1, block)
+
+    assert result["phase_reason"] == "p2_end_offset_reached"
+    assert "p2_end_offset_reached" in result["blocking_reasons"]
+    assert not any(reason.startswith("p1_") for reason in result["blocking_reasons"])
