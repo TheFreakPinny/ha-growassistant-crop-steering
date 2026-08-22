@@ -289,10 +289,96 @@ def test_p3_after_light_off_discards_obsolete_readiness_failures() -> None:
 def test_p3_during_light_exposes_p2_end_offset() -> None:
     """Daytime P3 retains the actual P2 condition that selected dryback."""
     phase, p1, block = _phase_diagnostic_inputs()
-    block["p2_time_ok"] = False
+    phase["p2_time_ok"] = False
+    block.update(
+        {
+            "p2_time_ok": False,
+            "p2_ref_vwc": None,
+            "p2_soak_remaining_s": 30,
+            "drain_wet": True,
+        }
+    )
 
     result = sensor._calculate_phase_diagnostics("p3_dryback", phase, p1, block)
 
     assert result["phase_reason"] == "p2_end_offset_reached"
     assert "p2_end_offset_reached" in result["blocking_reasons"]
+    assert "p2_reference_missing" in result["blocking_reasons"]
+    assert "p2_soak_active" in result["blocking_reasons"]
+    assert "drain_sensor_wet" in result["blocking_reasons"]
     assert not any(reason.startswith("p1_") for reason in result["blocking_reasons"])
+
+
+def test_daytime_p3_shot_limit_is_phase_reason_despite_shot_blockers() -> None:
+    """Selection gates outrank operational P2 blockers as the P3 reason."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    block.update(
+        {
+            "p2_done": 4,
+            "p2_ref_vwc": None,
+            "vwc": 48,
+            "p2_soak_remaining_s": 30,
+            "drain_sensor_configured": True,
+            "drain_sensor_available": False,
+            "drain_tray_wet": True,
+        }
+    )
+
+    result = sensor._calculate_phase_diagnostics("p3_dryback", phase, p1, block)
+
+    assert result["phase_reason"] == "p2_shot_limit_reached"
+    assert {
+        "p2_shot_limit_reached",
+        "p2_reference_missing",
+        "p2_vwc_drop_not_reached",
+        "p2_soak_active",
+        "drain_sensor_unavailable",
+        "drain_tray_wet",
+    } <= set(result["blocking_reasons"])
+
+
+@pytest.mark.parametrize(
+    "block_updates",
+    [
+        {"p2_ref_vwc": None},
+        {"p2_soak_remaining_s": 30},
+        {"vwc": 48},
+        {"vwc_cap_active": True},
+        {"drain_wet": True},
+        {"drain_tray_sensor_configured": True, "drain_tray_sensor_available": False},
+    ],
+)
+def test_operational_p2_blocker_does_not_select_daytime_p3(block_updates) -> None:
+    """Shot-readiness failures never masquerade as phase-selection reasons."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    block.update(block_updates)
+
+    result = sensor._calculate_phase_diagnostics("p3_dryback", phase, p1, block)
+
+    assert result["phase_reason"] == "p3_dryback_active"
+    assert result["blocking_reasons"]
+
+
+def test_incomplete_p1_selects_daytime_p3_before_p2_readiness() -> None:
+    """An elapsed incomplete P1 is the daytime P3 progression reason."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    p1.update({"p1_done": False, "p1_window_active": False})
+    block.update({"p2_ref_vwc": None, "p2_soak_remaining_s": 30})
+
+    result = sensor._calculate_phase_diagnostics("p3_dryback", phase, p1, block)
+
+    assert result["phase_reason"] == "p1_window_ended_without_completion"
+    assert "p2_reference_missing" in result["blocking_reasons"]
+    assert "p2_soak_active" in result["blocking_reasons"]
+
+
+def test_manual_progression_uses_phase_availability_not_p2_mode() -> None:
+    """Manual P1 progression still selects P3 from shot/time availability."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    p1.update({"p1_mode": "manual", "p1_done": False})
+    block.update({"p2_mode": "manual", "p2_done": 4})
+
+    result = sensor._calculate_phase_diagnostics("p3_dryback", phase, p1, block)
+
+    assert result["phase_reason"] == "p2_shot_limit_reached"
+    assert "p2_mode_manual" in result["blocking_reasons"]

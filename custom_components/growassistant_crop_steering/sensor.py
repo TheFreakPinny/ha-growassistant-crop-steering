@@ -1038,14 +1038,9 @@ def _calculate_phase_diagnostics(
             ]
             phase_reason = "light_cycle_ended"
         else:
-            passed.append("led_day_true")
-            phase_reason = next(
-                (
-                    reason
-                    for reason in blocking
-                    if reason != "required_entity_unavailable"
-                ),
-                "p3_dryback_active",
+            passed.extend(p2_passed)
+            phase_reason = _calculate_daytime_p3_phase_reason(
+                phase_attributes, p1_attributes, block_attributes
             )
 
     return {
@@ -1053,6 +1048,34 @@ def _calculate_phase_diagnostics(
         "blocking_reasons": blocking,
         "passed_conditions": passed,
     }
+
+
+def _calculate_daytime_p3_phase_reason(
+    phase_attributes: dict[str, Any],
+    p1_attributes: dict[str, Any],
+    block_attributes: dict[str, Any],
+) -> str:
+    """Explain daytime P3 using only conditions that select the phase."""
+    p1_mode = p1_attributes.get("p1_mode")
+
+    # In sensor mode, an incomplete P1 selects P3 after its eligibility window
+    # closes. P2 shot-readiness conditions do not participate in that decision.
+    if p1_mode != MODE_MANUAL and not p1_attributes.get("p1_done"):
+        if not p1_attributes.get("p1_window_active"):
+            return "p1_window_ended_without_completion"
+        return "p1_not_done"
+
+    # Both manual progression and a completed sensor-mode P1 use these same two
+    # P2 availability gates in _calculate_phase(). Keep their ordering stable if
+    # both are false; neither operational shot-readiness nor P2 mode selects P3.
+    p2_target = block_attributes.get("p2_target", 0)
+    p2_done = block_attributes.get("p2_done", 0)
+    if p2_target <= 0 or p2_done >= p2_target:
+        return "p2_shot_limit_reached"
+    if phase_attributes.get("p2_time_ok") is False:
+        return "p2_end_offset_reached"
+
+    return "p3_dryback_active"
 
 
 def _calculate_p2_diagnostics(
