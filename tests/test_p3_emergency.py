@@ -32,23 +32,37 @@ class _States:
 
 
 def _result(
-    *, vwc=25, soak=0, done=0, maximum=2, enabled=True, tray="off", drain="off"
+    *,
+    vwc=25,
+    soak=0,
+    done=0,
+    maximum=2,
+    enabled=True,
+    duration=20,
+    tray="off",
+    drain="off",
 ):
+    options = {
+        CONF_P3_EMERGENCY_ENABLED: enabled,
+        CONF_P3_EMERGENCY_THRESHOLD_VWC: 30,
+        CONF_P3_EMERGENCY_SOAK_MIN: 15,
+        CONF_P3_EMERGENCY_SHOTS_DONE: done,
+        CONF_P3_EMERGENCY_MAX_SHOTS: maximum,
+    }
+    data = {
+        CONF_VWC_SENSOR: "sensor.vwc",
+        CONF_PUMP_SWITCH: "switch.pump",
+        CONF_DRAIN_TRAY_SENSOR: "binary_sensor.tray",
+        CONF_DRAIN_SENSOR: "binary_sensor.drain",
+    }
+    if duration is None:
+        data[CONF_P3_EMERGENCY_SHOT_DURATION_S] = "number.p3_duration"
+    else:
+        options[CONF_P3_EMERGENCY_SHOT_DURATION_S] = duration
+
     entry = SimpleNamespace(
-        options={
-            CONF_P3_EMERGENCY_ENABLED: enabled,
-            CONF_P3_EMERGENCY_THRESHOLD_VWC: 30,
-            CONF_P3_EMERGENCY_SHOT_DURATION_S: 20,
-            CONF_P3_EMERGENCY_SOAK_MIN: 15,
-            CONF_P3_EMERGENCY_SHOTS_DONE: done,
-            CONF_P3_EMERGENCY_MAX_SHOTS: maximum,
-        },
-        data={
-            CONF_VWC_SENSOR: "sensor.vwc",
-            CONF_PUMP_SWITCH: "switch.pump",
-            CONF_DRAIN_TRAY_SENSOR: "binary_sensor.tray",
-            CONF_DRAIN_SENSOR: "binary_sensor.drain",
-        },
+        options=options,
+        data=data,
     )
     values = {"switch.pump": "off", "binary_sensor.drain": drain}
     if tray is not None:
@@ -81,6 +95,10 @@ def _result(
         ({"vwc": None}, "p3_emergency_vwc_invalid"),
         ({"soak": 1}, "p3_emergency_soak_active"),
         ({"done": 2}, "p3_emergency_shot_limit_reached"),
+        ({"duration": 0}, "p3_emergency_shot_duration_invalid"),
+        ({"duration": -1}, "p3_emergency_shot_duration_invalid"),
+        ({"duration": "not-a-number"}, "p3_emergency_shot_duration_invalid"),
+        ({"duration": None}, "p3_emergency_shot_duration_invalid"),
         ({"tray": "on"}, "p3_emergency_drain_tray_wet"),
         ({"tray": None}, "p3_emergency_drain_tray_unavailable"),
     ],
@@ -96,3 +114,9 @@ def test_normal_drain_does_not_block_ready_p3_emergency(drain) -> None:
     result = _result(drain=drain)
     assert result["p3_emergency_ready"] is True
     assert result["p3_emergency_status"] == "p3_emergency_ready"
+
+
+def test_positive_duration_allows_ready_p3_emergency() -> None:
+    result = _result(duration=1)
+    assert result["p3_emergency_shot_duration_s"] == 1
+    assert result["p3_emergency_ready"] is True

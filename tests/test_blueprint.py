@@ -88,6 +88,7 @@ def test_p3_branch_runs_one_guarded_shot_and_records_completion() -> None:
     assert "is_state(pump_switch_entity, 'off')" in branch
     assert "is_state(drain_tray_entity, 'off')" in branch
     assert "p3_emergency_shots_done" in branch
+    assert "states(p3_emergency_shot_duration_entity) | float(0) > 0" in branch
     assert "growassistant_crop_steering.set_last_shot_now" in branch
     assert "drain_sensor" not in branch
     assert "mode: single" in BLUEPRINT

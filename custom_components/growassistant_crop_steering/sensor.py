@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -912,6 +913,8 @@ def _calculate_p3_emergency(
         status = "p3_emergency_soak_active"
     elif done >= maximum:
         status = "p3_emergency_shot_limit_reached"
+    elif duration is None or not math.isfinite(duration) or duration <= 0:
+        status = "p3_emergency_shot_duration_invalid"
     elif not tray["configured"] or not tray["available"]:
         status = "p3_emergency_drain_tray_unavailable"
     elif tray["wet"]:

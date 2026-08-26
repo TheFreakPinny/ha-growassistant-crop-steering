@@ -369,6 +369,9 @@ action:
               {{ states(p3_emergency_shots_done_entity) | int(0)
                  < states(p3_emergency_max_shots_entity) | int(0) }}
           - condition: template
+            value_template: >-
+              {{ states(p3_emergency_shot_duration_entity) | float(0) > 0 }}
+          - condition: template
             value_template: "{{ is_state(pump_switch_entity, 'off') }}"
           - condition: template
             value_template: >-
