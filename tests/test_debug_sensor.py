@@ -249,10 +249,10 @@ def test_legacy_p1_debug_calculator_remains_unchanged() -> None:
         ({"p2_soak_remaining_s": 30}, "p2_soak_active"),
         (
             {
-                "drain_sensor_configured": True,
-                "drain_sensor_available": False,
+                "drain_tray_sensor_configured": True,
+                "drain_tray_sensor_available": False,
             },
-            "drain_sensor_unavailable",
+            "drain_tray_unavailable",
         ),
         ({"p2_time_ok": False}, "p2_end_offset_reached"),
     ],
@@ -267,6 +267,34 @@ def test_p2_sensor_mode_reports_current_gate(updates, reason) -> None:
     assert reason in result["blocking_reasons"]
     assert "p2_mode_sensor" in result["passed_conditions"]
     assert "vwc_drop_reached" in result["passed_conditions"]
+    assert not any("interval" in item for item in result["blocking_reasons"])
+
+
+@pytest.mark.parametrize(
+    ("updates", "informational_reason"),
+    [
+        ({"drain_wet": True}, "drain_sensor_wet_ignored_in_p2"),
+        (
+            {
+                "drain_sensor_configured": True,
+                "drain_sensor_available": False,
+            },
+            "drain_sensor_unavailable_ignored_in_p2",
+        ),
+    ],
+)
+def test_p2_debug_treats_normal_drain_as_informational(
+    updates, informational_reason
+) -> None:
+    """Normal drain state remains visible without becoming a P2 blocker."""
+    phase, p1, block = _phase_diagnostic_inputs()
+    block.update(updates)
+
+    result = sensor._calculate_phase_diagnostics("p2_midday", phase, p1, block)
+
+    assert "drain_sensor_wet" not in result["blocking_reasons"]
+    assert "drain_sensor_unavailable" not in result["blocking_reasons"]
+    assert informational_reason in result["passed_conditions"]
     assert not any("interval" in item for item in result["blocking_reasons"])
 
 
@@ -305,7 +333,8 @@ def test_p3_during_light_exposes_p2_end_offset() -> None:
     assert "p2_end_offset_reached" in result["blocking_reasons"]
     assert "p2_reference_missing" in result["blocking_reasons"]
     assert "p2_soak_active" in result["blocking_reasons"]
-    assert "drain_sensor_wet" in result["blocking_reasons"]
+    assert "drain_sensor_wet" not in result["blocking_reasons"]
+    assert "drain_sensor_wet_ignored_in_p2" in result["passed_conditions"]
     assert not any(reason.startswith("p1_") for reason in result["blocking_reasons"])
 
 
@@ -332,9 +361,10 @@ def test_daytime_p3_shot_limit_is_phase_reason_despite_shot_blockers() -> None:
         "p2_reference_missing",
         "p2_vwc_drop_not_reached",
         "p2_soak_active",
-        "drain_sensor_unavailable",
         "drain_tray_wet",
     } <= set(result["blocking_reasons"])
+    assert "drain_sensor_unavailable" not in result["blocking_reasons"]
+    assert "drain_sensor_unavailable_ignored_in_p2" in result["passed_conditions"]
 
 
 @pytest.mark.parametrize(
@@ -344,7 +374,6 @@ def test_daytime_p3_shot_limit_is_phase_reason_despite_shot_blockers() -> None:
         {"p2_soak_remaining_s": 30},
         {"vwc": 48},
         {"vwc_cap_active": True},
-        {"drain_wet": True},
         {"drain_tray_sensor_configured": True, "drain_tray_sensor_available": False},
     ],
 )

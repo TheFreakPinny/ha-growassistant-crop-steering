@@ -21,7 +21,13 @@ from custom_components.growassistant_crop_steering.const import (
 )
 
 
-def _block_reason_for_tray(*, available: bool, wet: bool) -> str:
+def _block_reason_for_drains(
+    *,
+    tray_available: bool = True,
+    tray_wet: bool = False,
+    drain_available: bool = True,
+    drain_wet: bool = False,
+) -> str:
     entry = SimpleNamespace(
         entry_id="test",
         data={},
@@ -41,18 +47,22 @@ def _block_reason_for_tray(*, available: bool, wet: bool) -> str:
         if key == CONF_DRAIN_TRAY_SENSOR:
             return {
                 "configured": True,
-                "available": available,
-                "wet": wet,
-                "state": "on" if wet else ("off" if available else "unavailable"),
+                "available": tray_available,
+                "wet": tray_wet,
+                "state": (
+                    "on" if tray_wet else ("off" if tray_available else "unavailable")
+                ),
                 "entity_id": "binary_sensor.drain_tray",
             }
         assert key == CONF_DRAIN_SENSOR
         return {
-            "configured": False,
-            "available": True,
-            "wet": False,
-            "state": None,
-            "entity_id": None,
+            "configured": True,
+            "available": drain_available,
+            "wet": drain_wet,
+            "state": (
+                "on" if drain_wet else ("off" if drain_available else "unavailable")
+            ),
+            "entity_id": "binary_sensor.drain",
         }
 
     with (
@@ -104,12 +114,23 @@ def test_p2_drain_tray_is_a_fail_safe_gate(
     available: bool, wet: bool, expected: str
 ) -> None:
     """An unavailable or wet configured tray prevents P2 readiness."""
-    assert _block_reason_for_tray(available=available, wet=wet) == expected
+    assert _block_reason_for_drains(tray_available=available, tray_wet=wet) == expected
+
+
+@pytest.mark.parametrize(
+    ("available", "wet"),
+    [(True, True), (False, False)],
+)
+def test_normal_drain_sensor_does_not_block_p2(available: bool, wet: bool) -> None:
+    """P2 readiness treats the normal drain sensor as diagnostic-only."""
+    assert (
+        _block_reason_for_drains(drain_available=available, drain_wet=wet) == "P2 ready"
+    )
 
 
 def test_drain_tray_is_not_a_completion_reason() -> None:
     """The tray state blocks irrigation rather than completing a phase."""
-    reason = _block_reason_for_tray(available=True, wet=True)
+    reason = _block_reason_for_drains(tray_wet=True)
 
     assert reason == "P2 blocked: drain tray wet"
     assert "complete" not in reason.lower()

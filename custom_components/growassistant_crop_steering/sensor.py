@@ -1123,18 +1123,37 @@ def _calculate_p2_diagnostics(
         (passed if condition else blocking).append(
             passed_name if condition else blocked_name
         )
-    _append_drain_diagnostics(block_attributes, blocking, passed)
+    _append_drain_diagnostics(
+        block_attributes, blocking, passed, check_normal_sensor=False
+    )
     return blocking, passed
 
 
 def _append_drain_diagnostics(
-    attributes: dict[str, Any], blocking: list[str], passed: list[str]
+    attributes: dict[str, Any],
+    blocking: list[str],
+    passed: list[str],
+    *,
+    check_normal_sensor: bool = True,
 ) -> None:
-    """Append shared fail-closed drain diagnostics."""
-    for prefix, condition_name, wet_key in (
-        ("drain_sensor", "drain_sensor", "drain_wet"),
-        ("drain_tray_sensor", "drain_tray", "drain_tray_wet"),
-    ):
+    """Append phase-aware drain diagnostics, keeping the tray fail-closed."""
+    if check_normal_sensor:
+        sensors = (
+            ("drain_sensor", "drain_sensor", "drain_wet"),
+            ("drain_tray_sensor", "drain_tray", "drain_tray_wet"),
+        )
+    else:
+        sensors = (("drain_tray_sensor", "drain_tray", "drain_tray_wet"),)
+        if attributes.get("drain_sensor_configured") and not attributes.get(
+            "drain_sensor_available"
+        ):
+            passed.append("drain_sensor_unavailable_ignored_in_p2")
+        elif attributes.get("drain_wet"):
+            passed.append("drain_sensor_wet_ignored_in_p2")
+        else:
+            passed.append("drain_sensor_clear_or_ignored")
+
+    for prefix, condition_name, wet_key in sensors:
         if attributes.get(f"{prefix}_configured") and not attributes.get(
             f"{prefix}_available"
         ):
@@ -1318,12 +1337,6 @@ def _calculate_block_reason(
             if p2_soak_remaining_s > 0:
                 return "P2 blocked: soak active", attributes
 
-            if drain_sensor["configured"] and not drain_sensor["available"]:
-                return "P2 blocked: drain sensor unavailable", attributes
-
-            if drain_wet:
-                return "P2 blocked: drain sensor wet", attributes
-
             if drain_tray_sensor["configured"] and not drain_tray_sensor["available"]:
                 return "P2 blocked: drain tray unavailable", attributes
 
@@ -1391,12 +1404,6 @@ def _calculate_block_reason(
 
         if p2_soak_remaining_s > 0:
             return "P2 blocked: soak active", attributes
-
-        if drain_sensor["configured"] and not drain_sensor["available"]:
-            return "P2 blocked: drain sensor unavailable", attributes
-
-        if drain_wet:
-            return "P2 blocked: drain sensor wet", attributes
 
         if drain_tray_sensor["configured"] and not drain_tray_sensor["available"]:
             return "P2 blocked: drain tray unavailable", attributes
