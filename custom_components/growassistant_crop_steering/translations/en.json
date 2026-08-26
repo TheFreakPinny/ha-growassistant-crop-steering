@@ -94,6 +94,9 @@
           "p2_midday": "P2 midday",
           "p3_dryback": "P3 dryback"
         }
+      },
+      "p3_emergency_soak_remaining": {
+        "name": "P3 Emergency Soak Remaining"
       }
     },
     "number": {
@@ -153,6 +156,21 @@
       },
       "p2_shots_done": {
         "name": "P2 Shots Done"
+      },
+      "p3_emergency_threshold_vwc": {
+        "name": "P3 Emergency VWC Threshold"
+      },
+      "p3_emergency_shot_duration_s": {
+        "name": "P3 Emergency Shot Duration"
+      },
+      "p3_emergency_soak_min": {
+        "name": "P3 Emergency Soak"
+      },
+      "p3_emergency_max_shots": {
+        "name": "P3 Emergency Max Shots"
+      },
+      "p3_emergency_shots_done": {
+        "name": "P3 Emergency Shots Done"
       }
     },
     "switch": {
@@ -164,6 +182,9 @@
       },
       "p1_window_opened_today": {
         "name": "P1 Window Opened Today"
+      },
+      "p3_emergency_enabled": {
+        "name": "P3 Emergency Enabled"
       }
     },
     "button": {

@@ -58,6 +58,12 @@ CONF_P1_WINDOW_OPENED_TODAY = "p1_window_opened_today"
 
 CONF_P1_SHOTS_DONE = "p1_shots_done"
 CONF_P2_SHOTS_DONE = "p2_shots_done"
+CONF_P3_EMERGENCY_ENABLED = "p3_emergency_enabled"
+CONF_P3_EMERGENCY_THRESHOLD_VWC = "p3_emergency_threshold_vwc"
+CONF_P3_EMERGENCY_SHOT_DURATION_S = "p3_emergency_shot_duration_s"
+CONF_P3_EMERGENCY_SOAK_MIN = "p3_emergency_soak_min"
+CONF_P3_EMERGENCY_MAX_SHOTS = "p3_emergency_max_shots"
+CONF_P3_EMERGENCY_SHOTS_DONE = "p3_emergency_shots_done"
 
 CONF_LAST_SHOT = "last_shot"
 
@@ -93,6 +99,12 @@ BOOLEAN_STATE_DESCRIPTIONS: tuple[BooleanStateDescription, ...] = (
         CONF_P1_WINDOW_OPENED_TODAY,
         "P1 Window Opened Today",
         "mdi:window-open-variant",
+        False,
+    ),
+    BooleanStateDescription(
+        CONF_P3_EMERGENCY_ENABLED,
+        "P3 Emergency Enabled",
+        "mdi:water-alert",
         False,
     ),
 )
@@ -134,6 +146,40 @@ NUMERIC_SETTING_DESCRIPTIONS: tuple[NumericSettingDescription, ...] = (
     NumericSettingDescription(CONF_P2_SHOTS, "P2 Shots", "shots", 0, 100, 1, 1),
     NumericSettingDescription(
         CONF_P2_SHOTS_DONE, "P2 Shots Done", "shots", 0, 100, 1, 0, "mdi:counter"
+    ),
+    NumericSettingDescription(
+        CONF_P3_EMERGENCY_THRESHOLD_VWC,
+        "P3 Emergency VWC Threshold",
+        "%",
+        0,
+        100,
+        0.1,
+        30,
+    ),
+    NumericSettingDescription(
+        CONF_P3_EMERGENCY_SHOT_DURATION_S,
+        "P3 Emergency Shot Duration",
+        "s",
+        1,
+        300,
+        1,
+        30,
+    ),
+    NumericSettingDescription(
+        CONF_P3_EMERGENCY_SOAK_MIN, "P3 Emergency Soak", "min", 1, 360, 1, 15
+    ),
+    NumericSettingDescription(
+        CONF_P3_EMERGENCY_MAX_SHOTS, "P3 Emergency Max Shots", "shots", 0, 100, 1, 0
+    ),
+    NumericSettingDescription(
+        CONF_P3_EMERGENCY_SHOTS_DONE,
+        "P3 Emergency Shots Done",
+        "shots",
+        0,
+        100,
+        1,
+        0,
+        "mdi:counter",
     ),
     NumericSettingDescription(
         CONF_P2_END_OFFSET_MIN, "P2 End Offset", "min", 0, 1440, 1, 360
@@ -191,6 +237,12 @@ CONFIG_ENTITY_KEYS = (
     CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P1_SHOTS_DONE,
     CONF_P2_SHOTS_DONE,
+    CONF_P3_EMERGENCY_ENABLED,
+    CONF_P3_EMERGENCY_THRESHOLD_VWC,
+    CONF_P3_EMERGENCY_SHOT_DURATION_S,
+    CONF_P3_EMERGENCY_SOAK_MIN,
+    CONF_P3_EMERGENCY_MAX_SHOTS,
+    CONF_P3_EMERGENCY_SHOTS_DONE,
 )
 
 CONFIG_ENTRY_KEYS = CONFIG_ENTITY_KEYS + CONFIG_OPTION_KEYS

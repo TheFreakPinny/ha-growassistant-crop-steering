@@ -31,6 +31,7 @@ from .const import (
     CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P2_REF_VWC,
     CONF_P2_SHOTS_DONE,
+    CONF_P3_EMERGENCY_SHOTS_DONE,
     CONF_PUMP_SWITCH,
     CONF_VWC_SENSOR,
     DOMAIN,
@@ -370,6 +371,7 @@ async def _reset_cycle_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await _set_boolean_state(hass, entry, CONF_P1_WINDOW_OPENED_TODAY, False)
     await _reset_shots_done_counter(hass, entry, CONF_P1_SHOTS_DONE)
     await _reset_shots_done_counter(hass, entry, CONF_P2_SHOTS_DONE)
+    await _reset_shots_done_counter(hass, entry, CONF_P3_EMERGENCY_SHOTS_DONE)
     await _set_numeric_setting(hass, entry, CONF_P2_REF_VWC, 0)
     _LOGGER.info(
         "GrowAssistant Crop Steering reset_cycle completed for config entry %s",

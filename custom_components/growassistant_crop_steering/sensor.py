@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -54,6 +55,13 @@ from .const import (
     CONF_P2_SOAK_MIN,
     CONF_P2_SHOTS_DONE,
     CONF_P2_VWC_DROP,
+    CONF_P3_EMERGENCY_ENABLED,
+    CONF_P3_EMERGENCY_MAX_SHOTS,
+    CONF_P3_EMERGENCY_SHOT_DURATION_S,
+    CONF_P3_EMERGENCY_SHOTS_DONE,
+    CONF_P3_EMERGENCY_SOAK_MIN,
+    CONF_P3_EMERGENCY_THRESHOLD_VWC,
+    CONF_PUMP_SWITCH,
     CONF_VWC_CAP,
     CONF_VWC_SENSOR,
     DEFAULT_NAME,
@@ -114,6 +122,15 @@ _P2_SOAK_REMAINING_SENSOR = SensorEntityDescription(
     icon="mdi:timer-sand",
 )
 
+_P3_EMERGENCY_SOAK_REMAINING_SENSOR = SensorEntityDescription(
+    key="p3_emergency_soak_remaining",
+    translation_key="p3_emergency_soak_remaining",
+    device_class=SensorDeviceClass.DURATION,
+    native_unit_of_measurement=UnitOfTime.SECONDS,
+    state_class=SensorStateClass.MEASUREMENT,
+    icon="mdi:timer-alert-outline",
+)
+
 _BLOCK_REASON_SENSOR = SensorEntityDescription(
     key="block_reason",
     translation_key="block_reason",
@@ -168,6 +185,13 @@ async def async_setup_entry(
                 _P2_SOAK_REMAINING_SENSOR,
                 CONF_P2_SOAK_MIN,
                 _PHASE_P2_MIDDAY,
+            ),
+            GrowAssistantSoakRemainingSensor(
+                hass,
+                entry,
+                _P3_EMERGENCY_SOAK_REMAINING_SENSOR,
+                CONF_P3_EMERGENCY_SOAK_MIN,
+                _PHASE_P3_DRYBACK,
             ),
             GrowAssistantBlockReasonSensor(hass, entry),
             GrowAssistantP1DebugSensor(hass, entry),
@@ -850,6 +874,76 @@ def _calculate_p1_debug(
     return state, attributes
 
 
+def _calculate_p3_emergency(
+    hass: HomeAssistant, entry: ConfigEntry, phase: str | None = None
+) -> dict[str, Any]:
+    """Calculate fail-closed P3 emergency-shot readiness without pump control."""
+    phase = phase or _calculate_phase(hass, entry)[0]
+    enabled = _get_boolean_state(hass, entry, CONF_P3_EMERGENCY_ENABLED, [])
+    threshold = _get_numeric_state(hass, entry, CONF_P3_EMERGENCY_THRESHOLD_VWC, [])
+    duration = _get_numeric_state(hass, entry, CONF_P3_EMERGENCY_SHOT_DURATION_S, [])
+    soak_min = _get_numeric_state(hass, entry, CONF_P3_EMERGENCY_SOAK_MIN, [])
+    done_raw = _get_numeric_state(hass, entry, CONF_P3_EMERGENCY_SHOTS_DONE, [])
+    max_raw = _get_numeric_state(hass, entry, CONF_P3_EMERGENCY_MAX_SHOTS, [])
+    done = max(0, int(done_raw or 0))
+    maximum = max(0, int(max_raw or 0))
+    left = max(0, maximum - done)
+    soak_remaining = _calculate_soak_remaining(
+        hass, entry, CONF_P3_EMERGENCY_SOAK_MIN, _PHASE_P3_DRYBACK
+    )["remaining_s"]
+    vwc_state = calculate_vwc_state(
+        hass, configured_entity_value(entry, CONF_VWC_SENSOR)
+    )
+    vwc = vwc_state["vwc"]
+    vwc_valid = vwc is not None and vwc_state["vwc_valid_count"] > 0
+    tray = _get_optional_binary_sensor_state(hass, entry, CONF_DRAIN_TRAY_SENSOR)
+    pump_entity = configured_entity_value(entry, CONF_PUMP_SWITCH)
+    pump_state = hass.states.get(pump_entity) if pump_entity else None
+    pump_off = pump_state is not None and pump_state.state == "off"
+
+    if phase != _PHASE_P3_DRYBACK:
+        status = "p3_emergency_phase_inactive"
+    elif not enabled:
+        status = "p3_emergency_disabled"
+    elif not vwc_valid or threshold is None:
+        status = "p3_emergency_vwc_invalid"
+    elif vwc > threshold:
+        status = "p3_emergency_vwc_above_threshold"
+    elif soak_remaining > 0:
+        status = "p3_emergency_soak_active"
+    elif done >= maximum:
+        status = "p3_emergency_shot_limit_reached"
+    elif duration is None or not math.isfinite(duration) or duration <= 0:
+        status = "p3_emergency_shot_duration_invalid"
+    elif not tray["configured"] or not tray["available"]:
+        status = "p3_emergency_drain_tray_unavailable"
+    elif tray["wet"]:
+        status = "p3_emergency_drain_tray_wet"
+    elif not pump_off:
+        status = "p3_emergency_pump_not_off"
+    else:
+        status = "p3_emergency_ready"
+
+    return {
+        "p3_emergency_enabled": enabled,
+        "p3_emergency_threshold_vwc": threshold,
+        "p3_emergency_shot_duration_s": duration,
+        "p3_emergency_soak_min": soak_min,
+        "p3_emergency_soak_remaining_s": soak_remaining,
+        "p3_emergency_shots_done": done,
+        "p3_emergency_max_shots": maximum,
+        "p3_emergency_shots_left": left,
+        "p3_emergency_ready": status == "p3_emergency_ready",
+        "p3_emergency_status": status,
+        "p3_emergency_vwc": vwc,
+        "p3_emergency_vwc_valid": vwc_valid,
+        "p3_emergency_pump_off": pump_off,
+        "p3_emergency_drain_tray_configured": tray["configured"],
+        "p3_emergency_drain_tray_available": tray["available"],
+        "p3_emergency_drain_tray_wet": tray["wet"],
+    }
+
+
 def _calculate_debug(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -859,6 +953,7 @@ def _calculate_debug(
     _p1_state, p1_attributes = _calculate_p1_debug(hass, entry)
     block_reason, block_attributes = _calculate_block_reason(hass, entry)
     last_shot, last_shot_source = _get_last_shot_datetime_with_source(hass, entry)
+    p3_emergency = _calculate_p3_emergency(hass, entry, phase)
 
     p2_shots_done = block_attributes["p2_done"]
     p2_shots_target = block_attributes["p2_target"]
@@ -874,6 +969,7 @@ def _calculate_debug(
     attributes = {
         **p1_attributes,
         **phase_diagnostics,
+        **p3_emergency,
         "phase": phase,
         "block_reason": block_reason,
         "until_off_s": phase_attributes.get("until_off_s"),

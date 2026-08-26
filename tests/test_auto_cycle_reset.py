@@ -25,6 +25,7 @@ from custom_components.growassistant_crop_steering.const import (
     CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P2_REF_VWC,
     CONF_P2_SHOTS_DONE,
+    CONF_P3_EMERGENCY_SHOTS_DONE,
 )
 
 
@@ -174,6 +175,7 @@ async def test_automatic_reset_preserves_last_shot_and_never_calls_pump() -> Non
         CONF_P1_WINDOW_OPENED_TODAY: True,
         CONF_P1_SHOTS_DONE: 4,
         CONF_P2_SHOTS_DONE: 2,
+        CONF_P3_EMERGENCY_SHOTS_DONE: 3,
         CONF_P2_REF_VWC: 55.5,
         CONF_LAST_SHOT: "2026-08-20T07:55:00+00:00",
     }
@@ -196,5 +198,6 @@ async def test_automatic_reset_preserves_last_shot_and_never_calls_pump() -> Non
     assert entry.options[CONF_P1_WINDOW_OPENED_TODAY] is False
     assert entry.options[CONF_P1_SHOTS_DONE] == 0
     assert entry.options[CONF_P2_SHOTS_DONE] == 0
+    assert entry.options[CONF_P3_EMERGENCY_SHOTS_DONE] == 0
     assert entry.options[CONF_P2_REF_VWC] == 0
     services.async_call.assert_not_awaited()

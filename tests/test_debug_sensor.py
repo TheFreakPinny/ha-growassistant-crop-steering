@@ -105,6 +105,14 @@ def test_general_debug_combines_existing_calculations_without_side_effects() -> 
             "_get_last_shot_datetime_with_source",
             return_value=(None, "managed"),
         ),
+        patch.object(
+            sensor,
+            "_calculate_p3_emergency",
+            return_value={
+                "p3_emergency_ready": False,
+                "p3_emergency_status": "p3_emergency_phase_inactive",
+            },
+        ),
     ):
         attributes = sensor._calculate_debug(hass, _entry())
 
