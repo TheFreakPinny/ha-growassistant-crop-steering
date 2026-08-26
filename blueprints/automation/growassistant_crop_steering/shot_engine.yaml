@@ -68,6 +68,51 @@ blueprint:
       selector:
         entity:
           domain: sensor
+    p3_emergency_debug_sensor:
+      name: P3 Emergency readiness sensor (optional)
+      description: GrowAssistant Debug sensor exposing p3_emergency_ready.
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+    p3_emergency_enabled:
+      name: P3 Emergency Enabled (optional)
+      default: ""
+      selector:
+        entity:
+          domain:
+            - switch
+            - input_boolean
+    p3_emergency_soak_remaining_sensor:
+      name: P3 Emergency Soak Remaining (optional)
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+    p3_emergency_shot_duration_s:
+      name: P3 Emergency Shot Duration (optional)
+      default: ""
+      selector:
+        entity:
+          domain:
+            - number
+            - input_number
+    p3_emergency_shots_done:
+      name: P3 Emergency Shots Done (optional)
+      default: ""
+      selector:
+        entity:
+          domain:
+            - number
+            - counter
+    p3_emergency_max_shots:
+      name: P3 Emergency Max Shots (optional)
+      default: ""
+      selector:
+        entity:
+          domain:
+            - number
+            - input_number
     p1_shot_duration_s:
       name: P1 shot duration seconds
       description: Number entity containing the P1 pump runtime in seconds.
@@ -201,6 +246,12 @@ variables:
   p1_debug_entity: !input p1_debug_sensor
   p1_soak_remaining_entity: !input p1_soak_remaining_sensor
   p2_soak_remaining_entity: !input p2_soak_remaining_sensor
+  p3_emergency_debug_entity: !input p3_emergency_debug_sensor
+  p3_emergency_enabled_entity: !input p3_emergency_enabled
+  p3_emergency_soak_remaining_entity: !input p3_emergency_soak_remaining_sensor
+  p3_emergency_shot_duration_entity: !input p3_emergency_shot_duration_s
+  p3_emergency_shots_done_entity: !input p3_emergency_shots_done
+  p3_emergency_max_shots_entity: !input p3_emergency_max_shots
   p1_shot_duration_entity: !input p1_shot_duration_s
   p2_shot_duration_entity: !input p2_shot_duration_s
   p1_active_entity: !input p1_active_boolean
@@ -295,6 +346,64 @@ action:
                   - delay:
                       seconds: >-
                         {{ ([states(p1_shot_duration_entity) | float(0), 0] | max)
+                           + ([failsafe_extra_seconds_value | float(10), 0] | max) }}
+                  - service: homeassistant.turn_off
+                    target:
+                      entity_id: !input pump_switch
+
+      - alias: "Run one P3 emergency dryback shot"
+        conditions:
+          - condition: template
+            value_template: "{{ is_state(phase_sensor_entity, 'p3_dryback') }}"
+          - condition: template
+            value_template: "{{ is_state(p3_emergency_enabled_entity, 'on') }}"
+          - condition: template
+            value_template: >-
+              {{ p3_emergency_debug_entity not in ['', none]
+                 and state_attr(p3_emergency_debug_entity, 'p3_emergency_ready') == true
+                 and state_attr(p3_emergency_debug_entity, 'p3_emergency_status') == 'p3_emergency_ready' }}
+          - condition: template
+            value_template: "{{ states(p3_emergency_soak_remaining_entity) | float(999999) <= 0 }}"
+          - condition: template
+            value_template: >-
+              {{ states(p3_emergency_shots_done_entity) | int(0)
+                 < states(p3_emergency_max_shots_entity) | int(0) }}
+          - condition: template
+            value_template: "{{ is_state(pump_switch_entity, 'off') }}"
+          - condition: template
+            value_template: >-
+              {{ drain_tray_entity not in ['', none]
+                 and is_state(drain_tray_entity, 'off') }}
+        sequence:
+          - service: homeassistant.turn_on
+            target:
+              entity_id: !input pump_switch
+          - parallel:
+              - sequence:
+                  - delay:
+                      seconds: "{{ [states(p3_emergency_shot_duration_entity) | float(0), 0] | max }}"
+                  - service: homeassistant.turn_off
+                    target:
+                      entity_id: !input pump_switch
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ p3_emergency_shots_done_entity.startswith('number.') }}"
+                        sequence:
+                          - service: number.set_value
+                            target:
+                              entity_id: !input p3_emergency_shots_done
+                            data:
+                              value: "{{ (states(p3_emergency_shots_done_entity) | int(0)) + 1 }}"
+                    default:
+                      - service: counter.increment
+                        target:
+                          entity_id: !input p3_emergency_shots_done
+                  - service: growassistant_crop_steering.set_last_shot_now
+              - sequence:
+                  - delay:
+                      seconds: >-
+                        {{ ([states(p3_emergency_shot_duration_entity) | float(0), 0] | max)
                            + ([failsafe_extra_seconds_value | float(10), 0] | max) }}
                   - service: homeassistant.turn_off
                     target:

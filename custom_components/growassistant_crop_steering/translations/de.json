@@ -94,6 +94,9 @@
           "p2_midday": "P2-Mittag",
           "p3_dryback": "P3-Dryback"
         }
+      },
+      "p3_emergency_soak_remaining": {
+        "name": "P3 Notfall-Restwartezeit"
       }
     },
     "number": {
@@ -153,6 +156,21 @@
       },
       "p2_shots_done": {
         "name": "P2-Shots erledigt"
+      },
+      "p3_emergency_threshold_vwc": {
+        "name": "P3 Notfall-VWC-Schwellenwert"
+      },
+      "p3_emergency_shot_duration_s": {
+        "name": "P3 Notfall-Bewässerungsdauer"
+      },
+      "p3_emergency_soak_min": {
+        "name": "P3 Notfall-Wartezeit"
+      },
+      "p3_emergency_max_shots": {
+        "name": "P3 Maximale Notfall-Bewässerungen"
+      },
+      "p3_emergency_shots_done": {
+        "name": "P3 Ausgeführte Notfall-Bewässerungen"
       }
     },
     "switch": {
@@ -164,6 +182,9 @@
       },
       "p1_window_opened_today": {
         "name": "P1-Fenster heute geöffnet"
+      },
+      "p3_emergency_enabled": {
+        "name": "P3 Notfall aktiviert"
       }
     },
     "button": {
