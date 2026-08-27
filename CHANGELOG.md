@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.14 - 2026-08-27
+
+### Changed
+
+- Removed the helper integration classification so GrowAssistant is presented as a normal Home Assistant integration in the Integrations UI.
+- Corrected the repository documentation and issue tracker URLs for the current `TheFreakPinny/ha-growassistant-crop-steering` repository.
+- Reworked the README to document the current v0.1 feature set, including P3 Emergency, automatic cycle reset, diagnostics, and safety behavior.
+
+### Added
+
+- Added integration branding icons for delivery with future HACS installs and updates.
+- Added a GrowAssistant repository banner.
+
+### Compatibility
+
+- No crop-steering logic, P1/P2/P3 behavior, Blueprint irrigation behavior, pump control, entity IDs, unique IDs, config flow behavior, number ranges, steps, units, or existing safety behavior changed in this release.
+
 ## v0.1.13 - 2026-08-27
 
 ### Improved
