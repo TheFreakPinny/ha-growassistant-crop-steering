@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.number import NumberEntity, NumberEntityDescription
+from homeassistant.components.number import (
+    NumberEntity,
+    NumberEntityDescription,
+    NumberMode,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
@@ -61,6 +65,7 @@ class GrowAssistantSettingNumber(NumberEntity):
             native_max_value=setting_description.native_max_value,
             native_step=setting_description.native_step,
             icon=setting_description.icon,
+            mode=NumberMode.BOX,
         )
         self._attr_unique_id = f"{entry.entry_id}_{setting_description.key}"
         self._attr_device_info = _device_info(entry)
