@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.1.12 - 2026-08-27
+
+### Changed
+
+- The normal Drain Sensor is now diagnostic-only during P2 and no longer blocks P2 irrigation when wet or unavailable. Existing P1 Drain Sensor behavior is unchanged.
+- The Drain Tray remains a fail-closed safety gate and blocks irrigation when wet or unavailable.
+
+### Added
+
+- Added optional P3 Emergency Dryback Shots while remaining in `p3_dryback`, with configurable enablement, VWC threshold, shot duration, soak time, maximum shots per light cycle, and an Emergency Shots Done counter.
+- P3 Emergency readiness requires the feature to be enabled in `p3_dryback`, valid VWC at or below the configured threshold, completed soak, an available shot, a valid positive duration, the pump to be off, and an explicitly configured, available, dry Drain Tray.
+- The normal Drain Sensor does not block P3 Emergency; the Drain Tray remains fail-closed.
+- P3 Emergency Shots Done resets once at the start of each new light cycle with the existing cycle reset. Last Shot remains preserved.
+- Added a P3 Emergency branch and inputs to the optional Shot Engine Blueprint. Pump control remains in the Blueprint; no native Python pump-on control was introduced, and existing P1/P2 pump behavior is unchanged.
+- Existing Blueprint automations created from an older version must have the new P3 inputs assigned after the Blueprint is updated.
+
+### Live validation
+
+- Manually validated in Home Assistant that P3 Emergency readiness became true below the configured test threshold and the Blueprint executed one real 30-second emergency pump shot.
+- Confirmed that P3 Emergency Shots Done incremented from 0 to 1, Last Shot was updated, and the soak countdown started after the shot.
+- After soak expired with Max Shots set to 1, readiness remained false with status `p3_emergency_shot_limit_reached`.
+
 ## v0.1.11 - 2026-08-22
 
 ### Improved
