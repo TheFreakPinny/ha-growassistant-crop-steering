@@ -6,10 +6,9 @@
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/Philipp/ha-growassistant-crop-steering",
-  "integration_type": "helper",
+  "documentation": "https://github.com/TheFreakPinny/ha-growassistant-crop-steering",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/Philipp/ha-growassistant-crop-steering/issues",
+  "issue_tracker": "https://github.com/TheFreakPinny/ha-growassistant-crop-steering/issues",
   "requirements": [],
   "version": "0.1.13"
 }
