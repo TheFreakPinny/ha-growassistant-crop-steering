@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.13 - 2026-08-27
+
+### Improved
+
+- All GrowAssistant integration-managed number entities now render as direct numeric input fields by using `NumberMode.BOX` instead of sliders.
+- BOX mode applies globally to current and future integration-managed number entities.
+
+### Compatibility
+
+- No entity IDs, unique IDs, values, minimum or maximum values, steps, units, crop steering logic, Blueprint logic, or pump control were changed.
+
 ## v0.1.12 - 2026-08-27
 
 ### Changed
