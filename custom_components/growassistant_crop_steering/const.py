@@ -66,6 +66,16 @@ CONF_P3_EMERGENCY_MAX_SHOTS = "p3_emergency_max_shots"
 CONF_P3_EMERGENCY_SHOTS_DONE = "p3_emergency_shots_done"
 
 CONF_LAST_SHOT = "last_shot"
+CONF_LAST_SHOT_TYPE = "last_shot_type"
+
+LAST_SHOT_TYPE_P1 = "p1"
+LAST_SHOT_TYPE_P2 = "p2"
+LAST_SHOT_TYPE_P3_EMERGENCY = "p3_emergency"
+LAST_SHOT_TYPES = (
+    LAST_SHOT_TYPE_P1,
+    LAST_SHOT_TYPE_P2,
+    LAST_SHOT_TYPE_P3_EMERGENCY,
+)
 
 
 @dataclass(frozen=True)

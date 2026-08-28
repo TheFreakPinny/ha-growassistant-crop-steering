@@ -14,6 +14,12 @@ def _p2_branch() -> str:
     return BLUEPRINT.split('alias: "Run a P2 midday shot"', 1)[1]
 
 
+def _p1_branch() -> str:
+    return BLUEPRINT.split('alias: "Run a P1 morning shot"', 1)[1].split(
+        'alias: "Run one P3 emergency dryback shot"', 1
+    )[0]
+
+
 def _p3_branch() -> str:
     return BLUEPRINT.split('alias: "Run one P3 emergency dryback shot"', 1)[1].split(
         'alias: "Run a P2 midday shot"', 1
@@ -77,6 +83,13 @@ def test_blueprint_does_not_add_native_python_pump_control() -> None:
     assert all(
         "homeassistant.turn_on" not in path.read_text() for path in python_sources
     )
+
+
+def test_blueprint_records_exact_type_for_each_completed_shot() -> None:
+    """Each existing post-shot service call labels its own shot type."""
+    assert "shot_type: p1" in _p1_branch()
+    assert "shot_type: p2" in _p2_branch()
+    assert "shot_type: p3_emergency" in _p3_branch()
 
 
 def test_p3_branch_runs_one_guarded_shot_and_records_completion() -> None:

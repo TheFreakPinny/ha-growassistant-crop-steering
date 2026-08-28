@@ -7,6 +7,8 @@ from datetime import datetime, time, timedelta
 import logging
 from typing import Any
 
+import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, Platform
 from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
@@ -22,6 +24,7 @@ from .config import configured_entity_value
 from .const import (
     BOOLEAN_STATE_DEFAULTS,
     CONF_LAST_SHOT,
+    CONF_LAST_SHOT_TYPE,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
     CONF_P1_ACTIVE,
@@ -35,6 +38,7 @@ from .const import (
     CONF_PUMP_SWITCH,
     CONF_VWC_SENSOR,
     DOMAIN,
+    LAST_SHOT_TYPES,
     NUMERIC_SETTING_DEFAULTS,
     SERVICE_CLEAR_LAST_SHOT,
     SERVICE_COMPLETE_P1,
@@ -73,6 +77,7 @@ SIGNAL_NUMBER_STATE_UPDATED = f"{DOMAIN}_number_state_updated"
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_DATETIME = "datetime"
 ATTR_VALUE = "value"
+ATTR_SHOT_TYPE = "shot_type"
 
 STORAGE_VERSION = 1
 STORAGE_KEY_PREFIX = f"{DOMAIN}.cycle_reset"
@@ -104,7 +109,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         for entry in _entries_for_service(
             hass, SERVICE_SET_LAST_SHOT_NOW, call.data.get(ATTR_CONFIG_ENTRY_ID)
         ):
-            await _set_last_shot_for_entry(hass, entry, dt_util.now())
+            await _set_last_shot_for_entry(
+                hass, entry, dt_util.now(), call.data.get(ATTR_SHOT_TYPE)
+            )
 
     async def _handle_complete_p1(call: ServiceCall) -> None:
         """Capture the P2 reference and complete P1 without controlling the pump."""
@@ -134,7 +141,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.services.async_register(DOMAIN, SERVICE_START_P1, _handle_start_p1)
     hass.services.async_register(DOMAIN, SERVICE_COMPLETE_P1, _handle_complete_p1)
     hass.services.async_register(
-        DOMAIN, SERVICE_SET_LAST_SHOT_NOW, _handle_set_last_shot_now
+        DOMAIN,
+        SERVICE_SET_LAST_SHOT_NOW,
+        _handle_set_last_shot_now,
+        schema=vol.Schema(
+            {
+                vol.Optional(ATTR_CONFIG_ENTRY_ID): str,
+                vol.Optional(ATTR_SHOT_TYPE): vol.In(LAST_SHOT_TYPES),
+            }
+        ),
     )
     hass.services.async_register(
         DOMAIN, SERVICE_CLEAR_LAST_SHOT, _handle_clear_last_shot
@@ -542,11 +557,15 @@ async def _set_last_shot_before_soak(hass: HomeAssistant, entry: ConfigEntry) ->
 
 
 async def _set_last_shot_for_entry(
-    hass: HomeAssistant, entry: ConfigEntry, last_shot: datetime
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    last_shot: datetime,
+    shot_type: str | None = None,
 ) -> None:
-    """Persist a managed last-shot timestamp and mirror it to a legacy helper."""
+    """Persist a managed last-shot timestamp and type, then mirror the timestamp."""
     options = dict(entry.options)
     options[CONF_LAST_SHOT] = last_shot.isoformat()
+    options[CONF_LAST_SHOT_TYPE] = shot_type
     hass.config_entries.async_update_entry(entry, options=options)
     async_dispatcher_send(hass, f"{SIGNAL_LAST_SHOT_UPDATED}_{entry.entry_id}")
     _LOGGER.info(
@@ -581,6 +600,7 @@ async def _clear_last_shot_for_entry(hass: HomeAssistant, entry: ConfigEntry) ->
     """Clear the managed last-shot timestamp without requiring legacy helpers."""
     options = dict(entry.options)
     options[CONF_LAST_SHOT] = None
+    options[CONF_LAST_SHOT_TYPE] = None
     hass.config_entries.async_update_entry(entry, options=options)
     async_dispatcher_send(hass, f"{SIGNAL_LAST_SHOT_UPDATED}_{entry.entry_id}")
     _LOGGER.info(

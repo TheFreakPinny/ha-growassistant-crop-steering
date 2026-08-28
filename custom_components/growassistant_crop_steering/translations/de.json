@@ -220,11 +220,17 @@
     },
     "set_last_shot_now": {
       "name": "Letzten Shot auf jetzt setzen",
-      "description": "Setzt den integrationsverwalteten Letzter-Shot-Zeitstempel auf jetzt und spiegelt ihn in einen Legacy-input_datetime-Helfer, wenn einer konfiguriert ist."
+      "description": "Setzt den integrationsverwalteten Letzter-Shot-Zeitstempel und den optionalen Shot-Typ auf jetzt und spiegelt den Zeitstempel in einen Legacy-input_datetime-Helfer, wenn einer konfiguriert ist. Ohne Shot-Typ wird er als unbekannt gespeichert.",
+      "fields": {
+        "shot_type": {
+          "name": "Shot-Typ",
+          "description": "Der Typ des Shots, der den Zeitstempel erzeugt hat."
+        }
+      }
     },
     "clear_last_shot": {
       "name": "Letzten Shot löschen",
-      "description": "Löscht den integrationsverwalteten Letzter-Shot-Zeitstempel. Legacy-input_datetime-Helfer bleiben unverändert, weil Home-Assistant-input_datetime-Helfer nicht zuverlässig geleert werden können."
+      "description": "Löscht den integrationsverwalteten Letzter-Shot-Zeitstempel und Shot-Typ. Legacy-input_datetime-Helfer bleiben unverändert, weil Home-Assistant-input_datetime-Helfer nicht zuverlässig geleert werden können."
     }
   },
   "selector": {

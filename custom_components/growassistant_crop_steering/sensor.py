@@ -31,6 +31,7 @@ from .const import (
     BOOLEAN_STATE_DEFAULTS,
     CONFIG_ENTRY_KEYS,
     CONF_LAST_SHOT,
+    CONF_LAST_SHOT_TYPE,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
     CONF_P0_TRANSPIRATION_MIN,
@@ -72,6 +73,10 @@ from .const import (
     MODE_OPTIONS,
     MODE_SENSOR,
     SIGNAL_LAST_SHOT_UPDATED,
+    LAST_SHOT_TYPE_P1,
+    LAST_SHOT_TYPE_P2,
+    LAST_SHOT_TYPE_P3_EMERGENCY,
+    LAST_SHOT_TYPES,
     VERSION,
 )
 from .vwc import calculate_vwc_state, normalize_vwc_sensors
@@ -284,6 +289,7 @@ class GrowAssistantLastShotSensor(SensorEntity):
         return {
             "source": source,
             "last_shot": last_shot.isoformat() if last_shot is not None else None,
+            "last_shot_type": _get_last_shot_type(self._entry),
         }
 
 
@@ -331,6 +337,8 @@ class GrowAssistantSoakRemainingSensor(SensorEntity):
         return {
             "phase": soak_state["phase"],
             "last_shot": soak_state["last_shot"],
+            "last_shot_type": soak_state["last_shot_type"],
+            "effective_soak_type": soak_state["effective_soak_type"],
             "soak_s": soak_state["soak_s"],
             "elapsed_s": soak_state["elapsed_s"],
             "active": soak_state["active"],
@@ -624,8 +632,17 @@ def _calculate_soak_remaining(
 ) -> dict[str, Any]:
     """Calculate soak countdown state and attributes."""
     phase = _calculate_phase(hass, entry)[0]
-    soak_s = _get_soak_seconds(hass, entry, soak_config_key)
     last_shot = _get_last_shot_datetime(hass, entry)
+    last_shot_type = _get_last_shot_type(entry)
+    soak_keys_by_type = {
+        LAST_SHOT_TYPE_P1: CONF_P1_SOAK_MIN,
+        LAST_SHOT_TYPE_P2: CONF_P2_SOAK_MIN,
+        LAST_SHOT_TYPE_P3_EMERGENCY: CONF_P3_EMERGENCY_SOAK_MIN,
+    }
+    soak_types_by_key = {value: key for key, value in soak_keys_by_type.items()}
+    effective_soak_type = last_shot_type or soak_types_by_key.get(soak_config_key)
+    effective_soak_key = soak_keys_by_type.get(last_shot_type, soak_config_key)
+    soak_s = _get_soak_seconds(hass, entry, effective_soak_key)
     active = phase == active_phase
     elapsed_s = None
     remaining_s = 0
@@ -638,6 +655,8 @@ def _calculate_soak_remaining(
     return {
         "phase": phase,
         "last_shot": last_shot.isoformat() if last_shot is not None else None,
+        "last_shot_type": last_shot_type,
+        "effective_soak_type": effective_soak_type,
         "soak_s": soak_s,
         "elapsed_s": elapsed_s,
         "active": active,
@@ -1765,6 +1784,12 @@ def _get_last_shot_datetime(hass: HomeAssistant, entry: ConfigEntry) -> datetime
     """Return managed last-shot timestamp, falling back to a legacy helper."""
     last_shot, _source = _get_last_shot_datetime_with_source(hass, entry)
     return last_shot
+
+
+def _get_last_shot_type(entry: ConfigEntry) -> str | None:
+    """Return a valid managed last-shot type without inferring historical state."""
+    value = entry.options.get(CONF_LAST_SHOT_TYPE)
+    return value if value in LAST_SHOT_TYPES else None
 
 
 def _get_last_shot_datetime_with_source(
