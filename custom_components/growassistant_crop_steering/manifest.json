@@ -10,5 +10,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/TheFreakPinny/ha-growassistant-crop-steering/issues",
   "requirements": [],
-  "version": "0.1.15"
+  "version": "0.1.16"
 }

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.16 - 2026-08-28
+
+### Changed
+
+- Added persistent Last Shot Type tracking for P1, P2 and P3 Emergency shots.
+- Soak duration is now selected from the shot that created the Last Shot timestamp rather than from the current phase.
+- A P2 soak can therefore continue correctly into P3 without being extended to the configured P3 Emergency soak.
+- After the first P3 Emergency shot, the configured P3 Emergency soak applies.
+- Added diagnostics for Last Shot Type and effective soak selection.
+- Updated the optional Shot Engine Blueprint to label P1, P2 and P3 Emergency shots.
+
+### Compatibility
+
+- Existing installations without a stored Last Shot Type keep the previous caller-specific soak behavior until the next typed shot.
+- Existing `set_last_shot_now` calls without `shot_type` remain valid.
+- Pump control, drain safety and phase behavior are unchanged.
+
 ## v0.1.15 - 2026-08-28
 
 ### Added
