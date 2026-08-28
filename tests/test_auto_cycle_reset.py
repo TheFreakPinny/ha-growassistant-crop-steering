@@ -17,6 +17,7 @@ from custom_components.growassistant_crop_steering import (
 )
 from custom_components.growassistant_crop_steering.const import (
     CONF_LAST_SHOT,
+    CONF_LAST_SHOT_TYPE,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
     CONF_P1_ACTIVE,
@@ -178,6 +179,7 @@ async def test_automatic_reset_preserves_last_shot_and_never_calls_pump() -> Non
         CONF_P3_EMERGENCY_SHOTS_DONE: 3,
         CONF_P2_REF_VWC: 55.5,
         CONF_LAST_SHOT: "2026-08-20T07:55:00+00:00",
+        CONF_LAST_SHOT_TYPE: "p2",
     }
     services = SimpleNamespace(async_call=AsyncMock())
     hass = SimpleNamespace(
@@ -193,6 +195,7 @@ async def test_automatic_reset_preserves_last_shot_and_never_calls_pump() -> Non
         await _reset_cycle_for_entry(hass, entry)
 
     assert entry.options[CONF_LAST_SHOT] == "2026-08-20T07:55:00+00:00"
+    assert entry.options[CONF_LAST_SHOT_TYPE] == "p2"
     assert entry.options[CONF_P1_ACTIVE] is False
     assert entry.options[CONF_P1_DONE] is False
     assert entry.options[CONF_P1_WINDOW_OPENED_TODAY] is False

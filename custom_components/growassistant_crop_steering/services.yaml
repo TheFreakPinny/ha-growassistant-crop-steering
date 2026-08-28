@@ -23,13 +23,28 @@ complete_p1:
 set_last_shot_now:
   name: Set last shot now
   description: >-
-    Set the integration-managed last-shot timestamp to now and mirror it to a
-    legacy input_datetime helper when one is configured.
+    Set the integration-managed last-shot timestamp and optional shot type, then
+    mirror the timestamp to a legacy input_datetime helper when one is configured.
+    Omitting shot type records it as unknown.
+  fields:
+    shot_type:
+      name: Shot type
+      description: The type of shot that created the timestamp.
+      required: false
+      selector:
+        select:
+          options:
+            - label: P1
+              value: p1
+            - label: P2
+              value: p2
+            - label: P3 Emergency
+              value: p3_emergency
 
 clear_last_shot:
   name: Clear last shot
   description: >-
-    Clear the integration-managed last-shot timestamp. Legacy input_datetime
+    Clear the integration-managed last-shot timestamp and shot type. Legacy input_datetime
     helpers are left unchanged because Home Assistant input_datetime helpers
     cannot be emptied reliably.
 

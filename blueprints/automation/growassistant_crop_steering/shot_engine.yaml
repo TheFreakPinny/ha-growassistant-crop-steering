@@ -342,6 +342,8 @@ action:
                         target:
                           entity_id: !input p1_shots_done_counter
                   - service: growassistant_crop_steering.set_last_shot_now
+                    data:
+                      shot_type: p1
               - sequence:
                   - delay:
                       seconds: >-
@@ -403,6 +405,8 @@ action:
                         target:
                           entity_id: !input p3_emergency_shots_done
                   - service: growassistant_crop_steering.set_last_shot_now
+                    data:
+                      shot_type: p3_emergency
               - sequence:
                   - delay:
                       seconds: >-
@@ -456,6 +460,8 @@ action:
                         target:
                           entity_id: !input p2_shots_done_counter
                   - service: growassistant_crop_steering.set_last_shot_now
+                    data:
+                      shot_type: p2
               - sequence:
                   - delay:
                       seconds: >-
