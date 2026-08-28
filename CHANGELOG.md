@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.15 - 2026-08-28
+
+### Added
+
+- Added standard and high-resolution logo branding files for Home Assistant integration and device presentation.
+
+### Compatibility
+
+- Existing icon branding remains unchanged.
+- No crop-steering logic, Blueprint logic, pump control, entity IDs, unique IDs, config flow behavior, number settings, safety behavior, or irrigation behavior changed in this release.
+
 ## v0.1.14 - 2026-08-27
 
 ### Changed
