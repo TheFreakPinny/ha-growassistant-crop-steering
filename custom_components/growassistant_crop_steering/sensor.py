@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import math
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -29,18 +29,16 @@ from homeassistant.util import dt as dt_util
 from .config import configured_entity_value
 from .const import (
     BOOLEAN_STATE_DEFAULTS,
-    CONFIG_ENTRY_KEYS,
+    CONF_DRAIN_SENSOR,
+    CONF_DRAIN_TRAY_SENSOR,
+    CONF_FIELD_CAPACITY_VWC,
     CONF_LAST_SHOT,
     CONF_LAST_SHOT_TYPE,
     CONF_LED_SUNRISE,
     CONF_LED_SUNSET,
     CONF_P0_TRANSPIRATION_MIN,
-    CONF_DRAIN_SENSOR,
-    CONF_DRAIN_TRAY_SENSOR,
-    CONF_FIELD_CAPACITY_VWC,
     CONF_P1_ACTIVE,
     CONF_P1_DONE,
-    CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P1_DURATION_MIN,
     CONF_P1_INTERVAL_MIN,
     CONF_P1_MODE,
@@ -48,13 +46,14 @@ from .const import (
     CONF_P1_SHOTS_DONE,
     CONF_P1_SOAK_MIN,
     CONF_P1_START_VWC,
+    CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P2_END_OFFSET_MIN,
     CONF_P2_INTERVAL_MIN,
     CONF_P2_MODE,
     CONF_P2_REF_VWC,
     CONF_P2_SHOTS,
-    CONF_P2_SOAK_MIN,
     CONF_P2_SHOTS_DONE,
+    CONF_P2_SOAK_MIN,
     CONF_P2_VWC_DROP,
     CONF_P3_EMERGENCY_ENABLED,
     CONF_P3_EMERGENCY_MAX_SHOTS,
@@ -65,22 +64,22 @@ from .const import (
     CONF_PUMP_SWITCH,
     CONF_VWC_CAP,
     CONF_VWC_SENSOR,
+    CONFIG_ENTRY_KEYS,
     DEFAULT_NAME,
     DOMAIN,
-    NUMERIC_SETTING_DEFAULTS,
-    NUMERIC_SETTING_KEYS,
-    MODE_MANUAL,
-    MODE_OPTIONS,
-    MODE_SENSOR,
-    SIGNAL_LAST_SHOT_UPDATED,
     LAST_SHOT_TYPE_P1,
     LAST_SHOT_TYPE_P2,
     LAST_SHOT_TYPE_P3_EMERGENCY,
     LAST_SHOT_TYPES,
+    MODE_MANUAL,
+    MODE_OPTIONS,
+    MODE_SENSOR,
+    NUMERIC_SETTING_DEFAULTS,
+    NUMERIC_SETTING_KEYS,
+    SIGNAL_LAST_SHOT_UPDATED,
     VERSION,
 )
 from .vwc import calculate_vwc_state, normalize_vwc_sensors
-
 
 _PHASE_OFF = "off"
 _PHASE_PRE_ON = "pre_on"
@@ -1836,7 +1835,7 @@ def _get_datetime_state(hass: HomeAssistant, entity_id: str | None) -> datetime 
     timestamp = state.attributes.get("timestamp")
     if timestamp is not None:
         try:
-            return datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
+            return datetime.fromtimestamp(float(timestamp), tz=UTC)
         except (TypeError, ValueError, OSError):
             pass
 

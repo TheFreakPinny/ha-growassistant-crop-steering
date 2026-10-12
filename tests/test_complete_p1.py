@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
@@ -17,6 +17,12 @@ from custom_components.growassistant_crop_steering.const import (
     CONF_P1_WINDOW_OPENED_TODAY,
     CONF_P2_REF_VWC,
     CONF_VWC_SENSOR,
+)
+from custom_components.growassistant_crop_steering.number import (
+    SIGNAL_NUMBER_STATE_UPDATED,
+)
+from custom_components.growassistant_crop_steering.switch import (
+    SIGNAL_SWITCH_STATE_UPDATED,
 )
 
 
@@ -66,7 +72,15 @@ async def test_complete_p1_captures_single_sensor_without_pump_control() -> None
     hass = _make_hass({"sensor.vwc": "54.2"})
     entry = _make_entry("sensor.vwc")
 
-    assert await _complete_p1_for_entry(hass, entry) is True
+    with patch(
+        "custom_components.growassistant_crop_steering.async_dispatcher_send"
+    ) as dispatch:
+        assert await _complete_p1_for_entry(hass, entry) is True
+    assert dispatch.call_args_list == [
+        call(hass, f"{SIGNAL_NUMBER_STATE_UPDATED}_{entry.entry_id}"),
+        call(hass, f"{SIGNAL_SWITCH_STATE_UPDATED}_{entry.entry_id}"),
+        call(hass, f"{SIGNAL_SWITCH_STATE_UPDATED}_{entry.entry_id}"),
+    ]
 
     assert entry.options[CONF_P2_REF_VWC] == 54.2
     assert entry.options[CONF_P1_DONE] is True
@@ -83,7 +97,15 @@ async def test_complete_p1_averages_all_valid_configured_sensors() -> None:
     )
     entry = _make_entry(["sensor.vwc_1", "sensor.vwc_2", "sensor.bad"])
 
-    assert await _complete_p1_for_entry(hass, entry) is True
+    with patch(
+        "custom_components.growassistant_crop_steering.async_dispatcher_send"
+    ) as dispatch:
+        assert await _complete_p1_for_entry(hass, entry) is True
+    assert dispatch.call_args_list == [
+        call(hass, f"{SIGNAL_NUMBER_STATE_UPDATED}_{entry.entry_id}"),
+        call(hass, f"{SIGNAL_SWITCH_STATE_UPDATED}_{entry.entry_id}"),
+        call(hass, f"{SIGNAL_SWITCH_STATE_UPDATED}_{entry.entry_id}"),
+    ]
     assert entry.options[CONF_P2_REF_VWC] == 45
 
 

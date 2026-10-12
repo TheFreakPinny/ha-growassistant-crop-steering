@@ -3,7 +3,10 @@
 from pathlib import Path
 
 import pytest
-
+import pytest_asyncio
+import yaml
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.template import Template
 
 BLUEPRINT = Path(
     "blueprints/automation/growassistant_crop_steering/shot_engine.yaml"
@@ -54,6 +57,60 @@ def test_p2_branch_keeps_existing_conditions_and_adds_safety_gates() -> None:
     assert "homeassistant.turn_on" in branch
 
 
+class _BlueprintLoader(yaml.SafeLoader):
+    """Preserve input names without changing PyYAML's global loader."""
+
+
+_BlueprintLoader.add_constructor(
+    "!input", lambda loader, node: loader.construct_scalar(node)
+)
+
+
+@pytest_asyncio.fixture
+async def blueprint_hass(tmp_path):
+    """Use real Home Assistant state and template helpers without starting services."""
+    hass = HomeAssistant(str(tmp_path))
+    yield hass
+    await hass.async_stop()
+
+
+def _p2_templates():
+    document = yaml.load(BLUEPRINT, Loader=_BlueprintLoader)
+    branch = next(
+        branch
+        for branch in document["action"][0]["choose"]
+        if branch["alias"] == "Run a P2 midday shot"
+    )
+    return [
+        item["value_template"] for item in document["condition"] + branch["conditions"]
+    ]
+
+
+def _p2_ready(hass, overrides=None, inputs=None):
+    """Render every actual P2 and top-level condition using HA's Jinja environment."""
+    values = {
+        "pump_switch_entity": "off",
+        "phase_sensor_entity": "p2_midday",
+        "p2_soak_remaining_entity": "0",
+        "p2_shots_done_entity": "0",
+        "p2_shots_number_entity": "3",
+        "block_reason_sensor_entity": "P2 ready",
+        "drain_tray_entity": "off",
+    }
+    values.update(overrides or {})
+    variables = {name: "sensor." + name for name in values}
+    variables.update(inputs or {})
+    for name, state in values.items():
+        if state is not None and variables[name]:
+            hass.states.async_set(variables[name], state)
+    results = [
+        Template(source, hass).async_render(variables) for source in _p2_templates()
+    ]
+    assert all(isinstance(result, bool) for result in results)
+    return all(results)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "block_reason",
     [
@@ -62,18 +119,56 @@ def test_p2_branch_keeps_existing_conditions_and_adds_safety_gates() -> None:
         "unavailable",
         "unknown",
         "",
+        None,
+        "p2 ready",
+        "P2 ready ",
     ],
 )
-def test_p2_readiness_gate_rejects_every_state_except_exact_ready(
-    block_reason: str,
-) -> None:
-    """Representative blocked and unavailable states fail the exact-match gate."""
-    assert block_reason != "P2 ready"
+async def test_p2_readiness_gate_rejects_every_state_except_exact_ready(
+    blueprint_hass, block_reason
+):
+    """Blocked, absent and non-exact readiness states prevent the actual branch."""
+    assert not _p2_ready(blueprint_hass, {"block_reason_sensor_entity": block_reason})
 
 
-def test_p2_readiness_gate_accepts_exact_ready() -> None:
-    """The ready state can pass when the branch's other conditions pass."""
-    assert "P2 ready" == "P2 ready"
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entity", ["", None])
+async def test_p2_readiness_requires_configured_block_reason(blueprint_hass, entity):
+    assert not _p2_ready(blueprint_hass, inputs={"block_reason_sensor_entity": entity})
+
+
+@pytest.mark.asyncio
+async def test_p2_readiness_gate_accepts_exact_ready(blueprint_hass):
+    """The real templates permit the branch when every condition passes."""
+    assert _p2_ready(blueprint_hass)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "state"),
+    [
+        ("pump_switch_entity", "on"),
+        ("pump_switch_entity", "unavailable"),
+        ("phase_sensor_entity", "p1_morning"),
+        ("p2_soak_remaining_entity", "1"),
+        ("p2_soak_remaining_entity", "unknown"),
+        ("p2_shots_done_entity", "3"),
+        ("p2_shots_done_entity", "4"),
+        ("p2_shots_number_entity", "0"),
+        ("p2_shots_number_entity", "unknown"),
+        ("drain_tray_entity", "on"),
+    ],
+)
+async def test_p2_other_conditions_block_ready_reason(blueprint_hass, name, state):
+    """A ready diagnostic cannot override pump, phase, soak, limit or tray gates."""
+    assert not _p2_ready(blueprint_hass, {name: state})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entity", ["", None])
+async def test_p2_preserves_optional_drain_tray_behavior(blueprint_hass, entity):
+    """The existing Blueprint permits an omitted tray; preserve that behavior."""
+    assert _p2_ready(blueprint_hass, inputs={"drain_tray_entity": entity})
 
 
 def test_blueprint_does_not_add_native_python_pump_control() -> None:

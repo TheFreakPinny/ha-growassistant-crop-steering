@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, time, timedelta
 import logging
+from datetime import datetime, time, timedelta
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, Platform
 from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
@@ -515,7 +514,7 @@ async def _stop_pump_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 async def _set_numeric_setting(
-    hass: HomeAssistant, entry: ConfigEntry, config_key: str, value: float | int
+    hass: HomeAssistant, entry: ConfigEntry, config_key: str, value: float
 ) -> None:
     """Persist a managed numeric setting and mirror it to a legacy helper if present."""
     if config_key in NUMERIC_SETTING_DEFAULTS:

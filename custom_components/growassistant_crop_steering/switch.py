@@ -14,10 +14,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     BOOLEAN_STATE_DEFAULTS,
     BOOLEAN_STATE_DESCRIPTIONS,
-    BooleanStateDescription,
     DEFAULT_NAME,
     DOMAIN,
     VERSION,
+    BooleanStateDescription,
 )
 
 PARALLEL_UPDATES = 0
