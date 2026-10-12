@@ -20,8 +20,8 @@ from .const import (
     DEFAULT_NAME,
     DOMAIN,
     NUMERIC_SETTING_DESCRIPTIONS,
-    NumericSettingDescription,
     VERSION,
+    NumericSettingDescription,
 )
 
 PARALLEL_UPDATES = 0

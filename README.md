@@ -1223,6 +1223,24 @@ ha-growassistant-crop-steering/
 
 # Development
 
+Local test baseline: Python `3.13.16`, Home Assistant `2025.12.5`,
+pytest `9.1.1`, pytest-asyncio `1.4.0`, and Ruff `0.17.0`.
+Activate the prepared cloud environment with
+`source /workspace/growassistant-cloud/venv/bin/activate`, or install these pinned
+packages into a Python 3.13 virtual environment for local development.
+Ruff uses the repository's explicit `ruff.toml` configuration.
+
+The cycle-reset tests replace storage before coordinator construction. P1
+completion tests mock dispatcher notifications and assert their ordered signals.
+Number-entity tests check public description fields and box mode rather than
+Home Assistant's internal dataclass wrapper identity. Blueprint readiness tests
+load the actual YAML and render the P2 branch and top-level pump conditions using
+Home Assistant's template engine and local state fixtures. They cover blocked,
+missing and non-exact readiness states, other gating conditions, and the existing
+optional drain-tray behavior. No Home Assistant services or real pumps are started.
+These checks do not validate an installed integration's full lifecycle or physical
+hardware; HACS and hassfest remain separate CI checks.
+
 Recommended validation commands:
 
 ```bash

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time, timezone
+from datetime import UTC, datetime, time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -11,8 +11,8 @@ import pytest
 pytest.importorskip("homeassistant")
 
 from custom_components.growassistant_crop_steering import (
-    _CycleResetCoordinator,
     _current_light_cycle_start,
+    _CycleResetCoordinator,
     _reset_cycle_for_entry,
 )
 from custom_components.growassistant_crop_steering.const import (
@@ -71,16 +71,16 @@ def _hass(sunrise: str = "08:00:00", sunset: str = "20:00:00") -> SimpleNamespac
 @pytest.mark.asyncio
 async def test_reset_at_start_of_new_light_cycle() -> None:
     """The first check after sunrise resets and records that cycle."""
-    coordinator = _CycleResetCoordinator(_hass(), _entry())
-    coordinator.store = _Store()
+    with patch(
+        "custom_components.growassistant_crop_steering.Store", return_value=_Store()
+    ):
+        coordinator = _CycleResetCoordinator(_hass(), _entry())
 
     with patch(
         "custom_components.growassistant_crop_steering._reset_cycle_for_entry",
         new_callable=AsyncMock,
     ) as reset:
-        assert await coordinator.async_check(
-            datetime(2026, 8, 20, 8, 0, tzinfo=timezone.utc)
-        )
+        assert await coordinator.async_check(datetime(2026, 8, 20, 8, 0, tzinfo=UTC))
 
     reset.assert_awaited_once()
     assert coordinator.store.marker == "2026-08-20T08:00:00+00:00"
@@ -89,17 +89,17 @@ async def test_reset_at_start_of_new_light_cycle() -> None:
 @pytest.mark.asyncio
 async def test_no_duplicate_reset_in_same_light_cycle() -> None:
     """Repeated callbacks in one cycle use the in-memory marker."""
-    coordinator = _CycleResetCoordinator(_hass(), _entry())
-    coordinator.store = _Store()
+    with patch(
+        "custom_components.growassistant_crop_steering.Store", return_value=_Store()
+    ):
+        coordinator = _CycleResetCoordinator(_hass(), _entry())
     with patch(
         "custom_components.growassistant_crop_steering._reset_cycle_for_entry",
         new_callable=AsyncMock,
     ) as reset:
-        assert await coordinator.async_check(
-            datetime(2026, 8, 20, 8, 0, tzinfo=timezone.utc)
-        )
+        assert await coordinator.async_check(datetime(2026, 8, 20, 8, 0, tzinfo=UTC))
         assert not await coordinator.async_check(
-            datetime(2026, 8, 20, 12, 0, tzinfo=timezone.utc)
+            datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
         )
     reset.assert_awaited_once()
 
@@ -108,8 +108,10 @@ async def test_no_duplicate_reset_in_same_light_cycle() -> None:
 async def test_sunrise_change_does_not_reset_current_grow_day_twice() -> None:
     """A changed sunrise is adopted without redefining the running grow day."""
     hass = _hass()
-    coordinator = _CycleResetCoordinator(hass, _entry())
-    coordinator.store = _Store()
+    with patch(
+        "custom_components.growassistant_crop_steering.Store", return_value=_Store()
+    ):
+        coordinator = _CycleResetCoordinator(hass, _entry())
     coordinator._sunrise = time(8)
     coordinator._sunset = time(20)
 
@@ -120,20 +122,16 @@ async def test_sunrise_change_does_not_reset_current_grow_day_twice() -> None:
             new_callable=AsyncMock,
         ) as reset,
     ):
-        assert await coordinator.async_check(
-            datetime(2026, 8, 20, 8, 0, tzinfo=timezone.utc)
-        )
+        assert await coordinator.async_check(datetime(2026, 8, 20, 8, 0, tzinfo=UTC))
 
         hass.states.values["input_datetime.sunrise"].state = "09:00:00"
         await coordinator._async_apply_time_helper_change(
-            datetime(2026, 8, 20, 10, 0, tzinfo=timezone.utc)
+            datetime(2026, 8, 20, 10, 0, tzinfo=UTC)
         )
 
         assert reset.await_count == 1
         assert coordinator.store.marker == "2026-08-20T09:00:00+00:00"
-        assert await coordinator.async_check(
-            datetime(2026, 8, 21, 9, 0, tzinfo=timezone.utc)
-        )
+        assert await coordinator.async_check(datetime(2026, 8, 21, 9, 0, tzinfo=UTC))
 
     assert reset.await_count == 2
     assert coordinator.store.marker == "2026-08-21T09:00:00+00:00"
@@ -143,15 +141,18 @@ async def test_sunrise_change_does_not_reset_current_grow_day_twice() -> None:
 async def test_restart_during_cycle_uses_persistent_marker() -> None:
     """A newly created coordinator honors the marker loaded after a restart."""
     marker = "2026-08-20T08:00:00+00:00"
-    coordinator = _CycleResetCoordinator(_hass(), _entry())
-    coordinator.store = _Store(marker)
+    with patch(
+        "custom_components.growassistant_crop_steering.Store",
+        return_value=_Store(marker),
+    ):
+        coordinator = _CycleResetCoordinator(_hass(), _entry())
     coordinator.last_cycle = (await coordinator.store.async_load())["last_cycle"]
     with patch(
         "custom_components.growassistant_crop_steering._reset_cycle_for_entry",
         new_callable=AsyncMock,
     ) as reset:
         assert not await coordinator.async_check(
-            datetime(2026, 8, 20, 14, 0, tzinfo=timezone.utc)
+            datetime(2026, 8, 20, 14, 0, tzinfo=UTC)
         )
     reset.assert_not_awaited()
 
@@ -161,9 +162,9 @@ def test_overnight_cycle_uses_previous_day_sunrise() -> None:
     start = _current_light_cycle_start(
         _hass("19:00:00", "07:00:00"),
         _entry(),
-        datetime(2026, 8, 20, 2, 0, tzinfo=timezone.utc),
+        datetime(2026, 8, 20, 2, 0, tzinfo=UTC),
     )
-    assert start == datetime(2026, 8, 19, 19, 0, tzinfo=timezone.utc)
+    assert start == datetime(2026, 8, 19, 19, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio

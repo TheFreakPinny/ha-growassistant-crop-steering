@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import FlowResult
@@ -13,7 +12,6 @@ from homeassistant.helpers import selector
 
 from .config import configured_entity_value
 from .const import (
-    CONFIG_ENTRY_KEYS,
     CONF_DRAIN_SENSOR,
     CONF_DRAIN_TRAY_SENSOR,
     CONF_LED_SUNRISE,
@@ -22,6 +20,7 @@ from .const import (
     CONF_P2_MODE,
     CONF_PUMP_SWITCH,
     CONF_VWC_SENSOR,
+    CONFIG_ENTRY_KEYS,
     DEFAULT_NAME,
     DOMAIN,
     MODE_OPTIONS,

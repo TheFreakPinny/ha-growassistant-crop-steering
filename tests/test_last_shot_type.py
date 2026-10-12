@@ -1,6 +1,6 @@
 """Regression tests for persistent last-shot type tracking."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -15,8 +15,8 @@ from custom_components.growassistant_crop_steering import (
     _set_last_shot_for_entry,
     _start_p1_for_entry,
     async_setup,
+    sensor,
 )
-from custom_components.growassistant_crop_steering import sensor
 from custom_components.growassistant_crop_steering.const import (
     CONF_LAST_SHOT,
     CONF_LAST_SHOT_TYPE,
@@ -30,7 +30,7 @@ from custom_components.growassistant_crop_steering.const import (
     SERVICE_SET_LAST_SHOT_NOW,
 )
 
-NOW = datetime(2026, 8, 28, 6, 10, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 28, 6, 10, tzinfo=UTC)
 
 
 def _hass(entry=None):
@@ -181,9 +181,9 @@ def _soak_state(
 
 def test_p2_protection_carries_into_p3_without_extension() -> None:
     state = _soak_state(
-        datetime(2026, 8, 28, 5, 30, tzinfo=timezone.utc),
+        datetime(2026, 8, 28, 5, 30, tzinfo=UTC),
         LAST_SHOT_TYPE_P2,
-        now=datetime(2026, 8, 28, 5, 40, tzinfo=timezone.utc),
+        now=datetime(2026, 8, 28, 5, 40, tzinfo=UTC),
     )
     assert state["remaining_s"] == 20 * 60
     assert state["effective_soak_type"] == LAST_SHOT_TYPE_P2
@@ -191,16 +191,16 @@ def test_p2_protection_carries_into_p3_without_extension() -> None:
 
 def test_p2_protection_reaches_zero_after_thirty_minutes() -> None:
     state = _soak_state(
-        datetime(2026, 8, 28, 5, 30, tzinfo=timezone.utc),
+        datetime(2026, 8, 28, 5, 30, tzinfo=UTC),
         LAST_SHOT_TYPE_P2,
-        now=datetime(2026, 8, 28, 6, 0, tzinfo=timezone.utc),
+        now=datetime(2026, 8, 28, 6, 0, tzinfo=UTC),
     )
     assert state["remaining_s"] == 0
 
 
 def test_p3_emergency_shot_uses_p3_soak() -> None:
     state = _soak_state(
-        datetime(2026, 8, 28, 6, 0, tzinfo=timezone.utc),
+        datetime(2026, 8, 28, 6, 0, tzinfo=UTC),
         LAST_SHOT_TYPE_P3_EMERGENCY,
     )
     assert state["remaining_s"] == 50 * 60
@@ -209,7 +209,7 @@ def test_p3_emergency_shot_uses_p3_soak() -> None:
 
 @pytest.mark.parametrize("shot_type", [..., "invalid"])
 def test_unknown_type_uses_caller_specific_legacy_soak(shot_type) -> None:
-    state = _soak_state(datetime(2026, 8, 28, 6, 0, tzinfo=timezone.utc), shot_type)
+    state = _soak_state(datetime(2026, 8, 28, 6, 0, tzinfo=UTC), shot_type)
     assert state["last_shot_type"] is None
     assert state["effective_soak_type"] == LAST_SHOT_TYPE_P3_EMERGENCY
     assert state["remaining_s"] == 50 * 60
