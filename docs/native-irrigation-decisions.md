@@ -57,7 +57,8 @@ valid. It is not a reservation or guaranteed future authorization. Start readine
 is conservative and checks shot safety too; it never calls `start_p1`. In manual
 mode start readiness is false, but already active manual P1 can receive shots.
 The start VWC threshold applies only to starting P1, per the approved design;
-active shots stop at field capacity. `p1_window_opened_today` prevents repeat
+additional P1 shots are blocked at field capacity. Running-shot supervision is
+defined separately in [Phase 2B](native-shot-engine.md). `p1_window_opened_today` prevents repeat
 sensor starts. There is no completion action: field capacity, P1 done and limits
 block shots without changing completion state or the P2 reference.
 

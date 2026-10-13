@@ -48,6 +48,7 @@ from .const import (
     SIGNAL_LAST_SHOT_UPDATED,
 )
 from .pump import async_unload_controller
+from .shot_engine import _async_unload_shots, _cycle_reset_started
 from .vwc import calculate_vwc_state
 
 _LOGGER = logging.getLogger(__name__)
@@ -171,6 +172,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a GrowAssistant Crop Steering config entry."""
+    if not await _async_unload_shots(hass, entry):
+        return False
     if not await async_unload_controller(hass, entry):
         return False
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
@@ -383,6 +386,12 @@ def _entries_for_service(
 
 async def _reset_cycle_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reset daily/cycle helper state for one config entry without touching the pump."""
+    async with _cycle_reset_started(hass, entry):
+        await _reset_cycle_helpers(hass, entry)
+
+
+async def _reset_cycle_helpers(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Apply reset while serialized with any development-shot accounting."""
     await _set_boolean_state(hass, entry, CONF_P1_ACTIVE, False)
     await _set_boolean_state(hass, entry, CONF_P1_DONE, False)
     await _set_boolean_state(hass, entry, CONF_P1_WINDOW_OPENED_TODAY, False)

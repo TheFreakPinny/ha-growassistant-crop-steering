@@ -1330,3 +1330,12 @@ Phase 1 adds an isolated, explicitly initialized pump controller with durable
 recovery, runtime limits, observed-off confirmation and cancellation-safe cleanup.
 Integration setup does not enable it; the existing Blueprint remains the shot
 executor. See [the API, state transitions and safety boundaries](docs/native-pump-controller.md).
+
+### Native single-shot coordinator (development only)
+
+Phase 2B adds an internal coordinator connecting eligibility decisions to the
+Phase 1 controller, with runtime supervision, cancellation-safe shutdown and
+conservative durable accounting. It is not initialized by integration setup and
+has no activation service, button or scheduler. The Blueprint remains the active
+executor. See [the architecture, safety policies and unresolved activation
+questions](docs/native-shot-engine.md).

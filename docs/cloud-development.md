@@ -80,3 +80,15 @@ do not prove the absence of every possible controller race.
 
 All tests use local HA fixtures and simulated entities. Phase 2, production Home
 Assistant and physical pumps remain outside this repair.
+
+## Phase 2B execution fixture permissions
+
+Apply the authorized network permission to the actual test command in a managed
+sandbox, in addition to fetch/install commands. During Phase 2B, a default-profile
+command stalled on HA's asynchronous timezone/integration loading. A standalone
+`asyncio` executor example also stalled outside HA; the same example completed
+with explicit supported execution network permission. Applying that permission to
+pytest resolved the fixture stalls without weakening native safety checks. The
+HA fixtures still disable external sockets and use synthetic pump services; this
+permission does not authorize production access. Native tests patch HA civil time
+while leaving event-loop monotonic timers running.
