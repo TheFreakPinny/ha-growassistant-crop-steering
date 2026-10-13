@@ -156,7 +156,9 @@ def capture_inputs(hass: HomeAssistant, entry: ConfigEntry) -> Inputs:
             and valid_entity_id(value)
         ):
             state = hass.states.get(value)
-            if key in {"led_sunrise", "led_sunset"} and state is not None:
+            if state is not None and state.state in {"", "unknown", "unavailable"}:
+                value = "invalid"
+            elif key in {"led_sunrise", "led_sunset"} and state is not None:
                 try:
                     attrs = state.attributes
                     if "hour" in attrs and "minute" in attrs:
@@ -180,7 +182,7 @@ def capture_inputs(hass: HomeAssistant, entry: ConfigEntry) -> Inputs:
             ):
                 try:
                     value = datetime.fromtimestamp(
-                        float(state.attributes["timestamp"]), UTC
+                        _number(state.attributes["timestamp"]), UTC
                     ).isoformat()
                 except (ValueError, TypeError, OverflowError, OSError):
                     value = "invalid"
@@ -420,7 +422,7 @@ def evaluate(inputs: Inputs, now: datetime) -> Decision:
                         reasons.append("soak_active")
             except (ValueError, TypeError, OverflowError):
                 reasons.append("invalid_last_shot")
-        elif any(
+        elif last_type in {"p1", "p2", "p3_emergency"} or any(
             (_number(config.get(key)) or 0) > 0
             for key in ("p1_shots_done", "p2_shots_done", "p3_emergency_shots_done")
         ):

@@ -571,3 +571,31 @@ def test_overnight_p2_cutoff():
     )
     assert decision(now(6, 59), **settings).eligible
     assert decision(now(7), **settings).phase == "p3_dryback"
+
+
+@pytest.mark.parametrize(
+    "key,attrs",
+    [("led_sunrise", {"hour": 6, "minute": 0}), ("last_shot", {"timestamp": 0})],
+)
+def test_unavailable_helper_attributes_cannot_authorize(key, attrs):
+    entry = SimpleNamespace(data={key: "input_datetime.helper"}, options={})
+    states = {
+        "input_datetime.helper": SimpleNamespace(state="unavailable", attributes=attrs)
+    }
+    hass = SimpleNamespace(states=SimpleNamespace(get=states.get))
+    assert capture_inputs(hass, entry).config[key] == "invalid"
+
+
+def test_boolean_legacy_timestamp_is_invalid():
+    entry = SimpleNamespace(data={"last_shot": "input_datetime.helper"}, options={})
+    states = {
+        "input_datetime.helper": SimpleNamespace(
+            state="2026-10-13 06:00:00", attributes={"timestamp": True}
+        )
+    }
+    hass = SimpleNamespace(states=SimpleNamespace(get=states.get))
+    assert capture_inputs(hass, entry).config["last_shot"] == "invalid"
+
+
+def test_recorded_shot_type_requires_timestamp_even_with_zero_counters():
+    assert "missing_last_shot" in decision(last_shot_type="p1").blocking_reasons

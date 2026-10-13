@@ -103,7 +103,7 @@ block shots without changing completion state or the P2 reference.
    nor Blueprint is modified. Start readiness also checks shot safety gates;
    Blueprint auto-start itself checks fewer operational inputs.
 4. A malformed, future or unavailable configured last-shot timestamp blocks.
-   With no last timestamp and any positive known phase counter, native shots
+   With no last timestamp and a recorded shot type or any positive known phase counter, native shots
    block instead of assuming soak expired. A genuinely fresh cycle with zero
    counters and no configured timestamp is allowed. Legacy naive last-shot
    timestamps use the supplied HA local timezone, except ambiguous/gap timestamps
