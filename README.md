@@ -1323,3 +1323,10 @@ for details.
   <strong>GrowAssistant – Crop Steering</strong><br>
   Smart irrigation diagnostics and Crop Steering for Home Assistant.
 </p>
+
+### Native pump safety foundation (development only)
+
+Phase 1 adds an isolated, explicitly initialized pump controller with durable
+recovery, runtime limits, observed-off confirmation and cancellation-safe cleanup.
+Integration setup does not enable it; the existing Blueprint remains the shot
+executor. See [the API, state transitions and safety boundaries](docs/native-pump-controller.md).

@@ -47,6 +47,7 @@ from .const import (
     SERVICE_STOP_PUMP,
     SIGNAL_LAST_SHOT_UPDATED,
 )
+from .pump import async_unload_controller
 from .vwc import calculate_vwc_state
 
 _LOGGER = logging.getLogger(__name__)
@@ -170,6 +171,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a GrowAssistant Crop Steering config entry."""
+    if not await async_unload_controller(hass, entry):
+        return False
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         coordinator = (

@@ -321,3 +321,68 @@ async def test_user_flow_creates_entry_and_prevents_duplicate(hass, entry):
     )
     assert duplicate["type"] == "abort"
     assert duplicate["reason"] == "already_configured"
+
+
+async def test_explicit_native_controller_unload_and_reload(hass, entry, pump):
+    """Native pump ownership is opt-in and is safely closed by actual HA reload."""
+    from custom_components.growassistant_crop_steering.pump import (
+        PumpController,
+        PumpState,
+    )
+
+    await setup(hass, entry)
+    owner = PumpController(hass, entry)
+    await owner.async_initialize()
+
+    async def switch_service(call):
+        hass.states.async_set(
+            "switch.pump", "on" if call.service == "turn_on" else "off"
+        )
+
+    hass.services.async_register("switch", "turn_on", switch_service)
+    hass.services.async_register("switch", "turn_off", switch_service)
+    await owner.async_activate(10)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert owner.state == PumpState.CLOSED
+    assert hass.states.get("switch.pump").state == "off"
+    # Reload does not create, enable, or activate another native owner.
+    assert f"{DOMAIN}.native_pump_owner" not in hass.data
+    pump.assert_not_awaited()
+
+
+async def test_native_shutdown_fault_prevents_entry_unload(hass, entry, monkeypatch):
+    """Keep the entry and owner available for off reconciliation after failure."""
+    from custom_components.growassistant_crop_steering.pump import (
+        PumpController,
+        PumpState,
+    )
+
+    monkeypatch.setattr(
+        "custom_components.growassistant_crop_steering.pump.CONFIRM_TIMEOUT", 0.03
+    )
+    runtime = await setup(hass, entry)
+    from freezegun.api import real_monotonic
+
+    # HA's fixture overrides loop.time after freezer applies real_asyncio.
+    # Pump safety timeouts need a monotonic clock that continues to advance.
+    monkeypatch.setattr(hass.loop, "time", real_monotonic)
+    owner = PumpController(hass, entry)
+    await owner.async_initialize()
+
+    async def on(call):
+        hass.states.async_set("switch.pump", "on")
+
+    async def off(call):
+        hass.states.async_set("switch.pump", "off")
+
+    hass.services.async_register("switch", "turn_on", on)
+    hass.services.async_register("switch", "turn_off", AsyncMock())
+    await owner.async_activate(10)
+    assert not await integration.async_unload_entry(hass, entry)
+    assert owner.state == PumpState.FAULT
+    assert coordinator(hass, entry) is runtime
+    assert hass.data[f"{DOMAIN}.native_pump_owner"] is owner
+    hass.services.async_register("switch", "turn_off", off)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert owner.state == PumpState.CLOSED
