@@ -136,8 +136,19 @@ async def test_unconfirmed_activation(hass, controller):
     assert controller.state == PumpState.IDLE
 
 
-async def test_late_activation_cannot_be_cleared_by_earlier_off(hass, controller):
+@pytest.mark.parametrize("reconcile_delay", [0, 0.01])
+async def test_late_activation_cannot_be_cleared_by_earlier_off(
+    hass, controller, monkeypatch, reconcile_delay
+):
     release = asyncio.Event()
+    reconcile = controller._reconcile_late_service
+
+    async def delayed_reconcile(operation_id):
+        # Exercise completion after the foreground HA task queue has drained.
+        await asyncio.sleep(reconcile_delay)
+        await reconcile(operation_id)
+
+    monkeypatch.setattr(controller, "_reconcile_late_service", delayed_reconcile)
 
     async def delayed(call):
         await release.wait()
@@ -151,9 +162,11 @@ async def test_late_activation_cannot_be_cleared_by_earlier_off(hass, controller
     with pytest.raises(PumpError):
         await controller.async_activate(1)
     release.set()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     # Late activation completion itself triggers a second off reconciliation.
     assert hass.states.get("switch.pump").state == "off"
+    assert controller.state == PumpState.IDLE
+    assert controller.recovery_record is None
     assert await controller.async_stop()
     assert hass.states.get("switch.pump").state == "off"
 
