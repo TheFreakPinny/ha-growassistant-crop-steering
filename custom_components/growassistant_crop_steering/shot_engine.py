@@ -337,6 +337,9 @@ class _ShotCoordinator:
         diagnostic = evaluate(
             Inputs({**config, "pump_state": "off"}, inputs.vwc), dt_util.now()
         )
+        # Approved P1 policy: field_capacity_reached prevents a NEW shot only.
+        # Do not shorten, extend or restart an authorized shot; independent
+        # safety faults below still interrupt it. P2/P3 policy is unchanged.
         critical = [
             r
             for r in diagnostic.blocking_reasons

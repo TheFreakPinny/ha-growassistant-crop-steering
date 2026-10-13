@@ -93,10 +93,13 @@ and treat every blocking reason as an emergency.
 | Unload/reload, HA stop, cancellation | Block during close | Interrupt and await verified shutdown |
 | Controller fault, unexpected early pump off/stop, runtime overrun | Block | Interrupt/fault; never count success |
 
-**Field capacity choice:** it is a next-shot gate in Phase 2B, not an emergency
-stop of a currently running P1 shot. This is an explicit development policy,
-consistent with bounded shot delivery and start-before-boundary execution. It
-needs agronomic review before any production activation. Phase 2A's earlier
+**Approved P1 field capacity policy:** reaching or exceeding configured capacity
+blocks authorization of a new P1 shot. An active P1 shot finishes its originally
+authorized duration, without extension or restart. After confirmed shutdown and
+successful accounting, every subsequent request captures current VWC again.
+Independent drain, sensor, pump, emergency-stop and runtime safety checks continue
+throughout; an interrupted or unconfirmed shot is never counted as successful.
+This approval applies specifically to P1 and does not change P2 or P3 behavior. Phase 2A's earlier
 wording about “active shots stop at field capacity” referred to eligibility for
 additional shots in active P1; that module never supervised running hardware.
 
@@ -164,8 +167,9 @@ Operation records are not pruned: replay protection survives every retained ID.
 
 - How will native ownership be proven and maintained against Blueprint, manual
   controls and other writers? This PR cannot enforce that external barrier.
-- Should field capacity interrupt an in-flight P1 shot, and should valid sunset,
-  phase cutoffs or P3 disablement stop one? The current explicit policy is above.
+- Should valid sunset, phase cutoffs or P3 disablement stop an active shot?
+  The current explicit policy is above. P1 field capacity behavior is approved
+  and is not an unresolved question.
 - What cooldown and total water budget should apply to partial/interrupted shots?
   No automatic retry or partial-delivery inference exists; success counters alone
   are not a total attempted-water budget.

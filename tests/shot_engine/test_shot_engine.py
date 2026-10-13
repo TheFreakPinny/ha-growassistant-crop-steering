@@ -111,13 +111,114 @@ async def test_active_safety(hass, engine, entity, state):
     assert hass.states.get("switch.pump").state == "off"
 
 
-async def test_field_capacity_only_prevents_next(hass, engine):
+@pytest.mark.parametrize("vwc", ["60", "61"])
+async def test_p1_field_capacity_finishes_original_duration(
+    hass, engine, monkeypatch, vwc
+):
+    activation_times, off_times = [], []
+    original_activate = engine.controller.async_activate
+
+    async def activate(runtime, **kwargs):
+        activation_times.append((hass.loop.time(), runtime))
+        return await original_activate(runtime, **kwargs)
+
+    async def off(call):
+        off_times.append(hass.loop.time())
+        await engine.simulated_service(call)
+
+    monkeypatch.setattr(engine.controller, "async_activate", activate)
+    hass.services.async_register("switch", "turn_off", off)
     task = await running(engine)
-    hass.states.async_set("sensor.vwc", "60")
+    assert engine.snapshot.decision.phase == "p1_morning"
+    duration = engine.snapshot.decision.duration_s
+    hass.states.async_set("sensor.vwc", vwc)
+    await asyncio.sleep(0.03)
+    assert not task.done()
+    assert hass.states.get("switch.pump").state == "on"
+    assert engine.entry.options.get("p1_shots_done", 0) == 0
     result = await task
-    assert result.state == ShotState.COMPLETED
+    assert result.state == ShotState.COMPLETED and result.accounted
+    assert len(activation_times) == 1
+    assert activation_times[0][1] == duration
+    assert off_times[0] - activation_times[0][0] >= duration - 0.01
+    assert engine.snapshot.decision.duration_s == duration
+    assert [call for call in engine.calls if call[0] == "turn_on"] == [
+        ("turn_on", "switch.pump")
+    ]
+    assert engine.controller.recovery_record is None
+    assert hass.states.get("switch.pump").state == "off"
+    assert engine.entry.options["p1_shots_done"] == 1
     with pytest.raises(ShotRejected, match="field_capacity_reached"):
         await engine.async_execute("next")
+
+
+@pytest.mark.parametrize("vwc", ["60", "61"])
+async def test_p1_field_capacity_rechecked_immediately_before_next_authorization(
+    hass, engine, shot_clock, vwc
+):
+    from homeassistant.util import dt as dt_util
+
+    from custom_components.growassistant_crop_steering.irrigation import (
+        capture_inputs,
+        evaluate,
+    )
+
+    assert (await engine.async_execute("first")).accounted
+    shot_clock.move_to("2026-10-13 08:16:00+00:00")
+    assert evaluate(capture_inputs(hass, engine.entry), dt_util.now()).eligible
+    before = dict(engine.entry.options)
+    calls = list(engine.calls)
+    # Do not drain event callbacks: authorization must capture current HA state.
+    hass.states.async_set("sensor.vwc", vwc)
+    with pytest.raises(ShotRejected) as rejected:
+        await engine.async_execute("next")
+    assert rejected.value.reasons == ("field_capacity_reached",)
+    assert dict(engine.entry.options) == before
+    assert engine.calls == calls
+
+
+@pytest.mark.parametrize("confirmed", [True, False])
+async def test_p1_at_capacity_counts_only_confirmed_shutdown(hass, engine, confirmed):
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def off(call):
+        entered.set()
+        await release.wait()
+        if confirmed:
+            await engine.simulated_service(call)
+
+    hass.services.async_register("switch", "turn_off", off)
+    task = await running(engine)
+    hass.states.async_set("sensor.vwc", "60")
+    await entered.wait()
+    assert not task.done()
+    assert engine.entry.options.get("p1_shots_done", 0) == 0
+    release.set()
+    result = await task
+    assert result.accounted is confirmed
+    assert result.state == (ShotState.COMPLETED if confirmed else ShotState.FAULT)
+    assert engine.entry.options.get("p1_shots_done", 0) == int(confirmed)
+
+
+@pytest.mark.parametrize("fault", ["tray", "sensor", "pump", "emergency_stop"])
+async def test_p1_at_capacity_keeps_independent_safety_monitoring(hass, engine, fault):
+    task = await running(engine)
+    hass.states.async_set("sensor.vwc", "60")
+    await asyncio.sleep(0.03)
+    assert not task.done()
+    if fault == "tray":
+        hass.states.async_set("binary_sensor.tray", "on")
+    elif fault == "sensor":
+        hass.states.async_set("sensor.vwc", "unavailable")
+    elif fault == "pump":
+        engine.controller._set_fault("simulated pump fault")
+    else:
+        await engine.controller.async_stop()
+    result = await task
+    assert result.state == ShotState.INTERRUPTED
+    assert not result.accounted
+    assert engine.entry.options.get("p1_shots_done", 0) == 0
+    assert hass.states.get("switch.pump").state == "off"
 
 
 async def test_pump_reassignment_uses_original_owner(hass, engine):
