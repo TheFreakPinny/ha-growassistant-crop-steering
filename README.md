@@ -1336,6 +1336,14 @@ executor. See [the API, state transitions and safety boundaries](docs/native-pum
 Phase 2B adds an internal coordinator connecting eligibility decisions to the
 Phase 1 controller, with runtime supervision, cancellation-safe shutdown and
 conservative durable accounting. It is not initialized by integration setup and
-has no activation service, button or scheduler. The Blueprint remains the active
+has no production activation service or button. The Blueprint remains the active
 executor. See [the architecture, safety policies and unresolved activation
 questions](docs/native-shot-engine.md).
+
+### Native automatic scheduler (development only)
+
+Phase 2C adds an event-driven internal scheduler using Phase 2A eligibility and
+Phase 2B execution, with coalesced HA events, one boundary/soak timer, no queued
+shots and fail-closed recovery. Normal setup never initializes or starts it; the
+unchanged Blueprint remains the only production executor. See [scheduler
+architecture and unresolved activation/migration questions](docs/native-scheduler.md).
