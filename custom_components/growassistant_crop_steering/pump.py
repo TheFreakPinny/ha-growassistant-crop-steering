@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import math
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from enum import StrEnum
 from typing import Any, TypeVar
@@ -130,11 +130,20 @@ class PumpController:
                 return
             await self._stop_locked()
 
-    async def async_activate(self, runtime: float) -> str:
+    async def async_activate(
+        self,
+        runtime: float,
+        *,
+        _entity_id: str | None = None,
+        _operation_id: str | None = None,
+        _revalidate: Callable[[], bool] | None = None,
+    ) -> str:
         """Start the currently selected pump for at most runtime seconds.
 
         Returns an operation ID after service completion and observed on state.
         Cancellation requests shutdown and waits for safety work before propagating.
+        Private keywords bind a development-shot reservation and its final
+        synchronous safety check; ordinary Phase 1 callers are unchanged.
         """
         if (
             isinstance(runtime, bool)
@@ -145,7 +154,9 @@ class PumpController:
             raise PumpError(
                 f"Runtime must be finite and within (0, {HARD_MAX_RUNTIME}]"
             )
-        task = self._task(self._activate(float(runtime)))
+        task = self._task(
+            self._activate(float(runtime), _entity_id, _operation_id, _revalidate)
+        )
         try:
             return await asyncio.shield(task)
         except asyncio.CancelledError:
@@ -169,7 +180,13 @@ class PumpController:
             and entity_id.split(".", 1)[0] in {"switch", "input_boolean"}
         )
 
-    async def _activate(self, runtime: float) -> str:
+    async def _activate(
+        self,
+        runtime: float,
+        expected_entity: str | None = None,
+        reserved_operation: str | None = None,
+        revalidate: Callable[[], bool] | None = None,
+    ) -> str:
         async with self._lock:
             if (
                 self.state != PumpState.IDLE
@@ -180,6 +197,8 @@ class PumpController:
             ):
                 raise PumpError(f"Activation blocked: {self.state}, {self.fault}")
             entity_id = configured_entity_value(self.entry, CONF_PUMP_SWITCH)
+            if expected_entity is not None and entity_id != expected_entity:
+                raise PumpError("Reserved pump assignment changed")
             state = (
                 self.hass.states.get(entity_id)
                 if self._valid_entity(entity_id)
@@ -195,7 +214,7 @@ class PumpController:
                 raise PumpError("Pump on/off services are unavailable")
             monotonic_start = self.hass.loop.time()
             now = dt_util.utcnow()
-            operation_id = uuid4().hex
+            operation_id = reserved_operation or uuid4().hex
             self._record = {
                 "entity_id": entity_id,
                 "operation_id": operation_id,
@@ -210,6 +229,8 @@ class PumpController:
                 remaining = runtime - (self.hass.loop.time() - monotonic_start)
                 if self._closing or self._stop_requested or remaining <= 0:
                     raise PumpError("Activation aborted before service dispatch")
+                if revalidate is not None and not revalidate():
+                    raise PumpError("Final shot safety revalidation failed")
                 self._deadline_handle = self.hass.loop.call_later(
                     remaining, self._deadline_expired
                 )
