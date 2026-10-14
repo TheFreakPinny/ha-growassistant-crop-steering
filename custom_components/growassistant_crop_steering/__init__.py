@@ -48,6 +48,7 @@ from .const import (
     SIGNAL_LAST_SHOT_UPDATED,
 )
 from .cycle import _async_unload_cycle
+from .native_diagnostics import DATA_DIAGNOSTICS, NativeDiagnosticsCoordinator
 from .pump import async_unload_controller
 from .scheduler import _async_unload_scheduler
 from .shot_engine import _async_unload_shots, _cycle_reset_started
@@ -56,6 +57,7 @@ from .vwc import calculate_vwc_state
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: tuple[Platform, ...] = (
+    Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.NUMBER,
     Platform.SENSOR,
@@ -163,12 +165,31 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up GrowAssistant Crop Steering from a config entry."""
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    coordinator = _CycleResetCoordinator(hass, entry)
-    hass.data.setdefault(DOMAIN, {}).setdefault(DATA_AUTO_RESET, {})[entry.entry_id] = (
-        coordinator
+    diagnostics = NativeDiagnosticsCoordinator(hass, entry)
+    diagnostic_entries = hass.data.setdefault(DOMAIN, {}).setdefault(
+        DATA_DIAGNOSTICS, {}
     )
-    await coordinator.async_start()
+    diagnostic_entries[entry.entry_id] = diagnostics
+    coordinator = None
+    forwarded = False
+    try:
+        await diagnostics.async_load()
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        forwarded = True
+        coordinator = _CycleResetCoordinator(hass, entry)
+        hass.data[DOMAIN].setdefault(DATA_AUTO_RESET, {})[entry.entry_id] = coordinator
+        await coordinator.async_start()
+        diagnostics.async_refresh()
+        diagnostics.async_start()
+    except BaseException:
+        diagnostics.async_stop()
+        diagnostic_entries.pop(entry.entry_id, None)
+        if coordinator is not None:
+            coordinator.async_stop()
+            hass.data[DOMAIN][DATA_AUTO_RESET].pop(entry.entry_id, None)
+        if forwarded:
+            await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+        raise
     return True
 
 
@@ -182,6 +203,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
+        diagnostics = (
+            hass.data.get(DOMAIN, {})
+            .get(DATA_DIAGNOSTICS, {})
+            .pop(entry.entry_id, None)
+        )
+        if diagnostics is not None:
+            diagnostics.async_stop()
         coordinator = (
             hass.data.get(DOMAIN, {}).get(DATA_AUTO_RESET, {}).pop(entry.entry_id, None)
         )

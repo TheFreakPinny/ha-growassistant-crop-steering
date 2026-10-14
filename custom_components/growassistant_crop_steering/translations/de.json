@@ -97,6 +97,30 @@
       },
       "p3_emergency_soak_remaining": {
         "name": "P3 Notfall-Restwartezeit"
+      },
+      "native_engine_status": {
+        "name": "Status der nativen Engine"
+      },
+      "native_vwc_configured_count": {
+        "name": "Konfigurierte native VWC-Sensoren"
+      },
+      "native_vwc_valid_count": {
+        "name": "Gültige native VWC-Sensoren"
+      },
+      "native_vwc_rejected_count": {
+        "name": "Abgelehnte native VWC-Sensoren"
+      },
+      "native_recovery_classification": {
+        "name": "Native Wiederherstellungsklassifikation"
+      },
+      "native_pump_ownership": {
+        "name": "Native Pumpenhoheit"
+      },
+      "native_migration_readiness": {
+        "name": "Native Migrationsbereitschaft"
+      },
+      "native_last_shot_outcome": {
+        "name": "Ergebnis des letzten nativen Shots"
       }
     },
     "number": {
@@ -202,6 +226,20 @@
       },
       "clear_last_shot": {
         "name": "Letzten Shot löschen"
+      }
+    },
+    "binary_sensor": {
+      "native_activation_available": {
+        "name": "Native Aktivierung verfügbar"
+      },
+      "native_sensor_readiness": {
+        "name": "Native Sensorbereitschaft"
+      },
+      "native_vwc_quorum": {
+        "name": "Natives VWC-Quorum"
+      },
+      "native_vwc_disagreement": {
+        "name": "Native VWC-Abweichung"
       }
     }
   },

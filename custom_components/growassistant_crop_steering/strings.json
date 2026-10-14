@@ -97,6 +97,30 @@
       },
       "p3_emergency_soak_remaining": {
         "name": "P3 Emergency Soak Remaining"
+      },
+      "native_engine_status": {
+        "name": "Native engine status"
+      },
+      "native_vwc_configured_count": {
+        "name": "Native VWC configured count"
+      },
+      "native_vwc_valid_count": {
+        "name": "Native VWC valid count"
+      },
+      "native_vwc_rejected_count": {
+        "name": "Native VWC rejected count"
+      },
+      "native_recovery_classification": {
+        "name": "Native recovery classification"
+      },
+      "native_pump_ownership": {
+        "name": "Native pump ownership"
+      },
+      "native_migration_readiness": {
+        "name": "Native migration readiness"
+      },
+      "native_last_shot_outcome": {
+        "name": "Native last shot outcome"
       }
     },
     "number": {
@@ -202,6 +226,20 @@
       },
       "clear_last_shot": {
         "name": "Clear Last Shot"
+      }
+    },
+    "binary_sensor": {
+      "native_activation_available": {
+        "name": "Native activation available"
+      },
+      "native_sensor_readiness": {
+        "name": "Native sensor readiness"
+      },
+      "native_vwc_quorum": {
+        "name": "Native VWC quorum"
+      },
+      "native_vwc_disagreement": {
+        "name": "Native VWC disagreement"
       }
     }
   },
