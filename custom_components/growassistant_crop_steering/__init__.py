@@ -47,6 +47,7 @@ from .const import (
     SERVICE_STOP_PUMP,
     SIGNAL_LAST_SHOT_UPDATED,
 )
+from .cycle import _async_unload_cycle
 from .pump import async_unload_controller
 from .scheduler import _async_unload_scheduler
 from .shot_engine import _async_unload_shots, _cycle_reset_started
@@ -174,6 +175,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a GrowAssistant Crop Steering config entry."""
     await _async_unload_scheduler(hass, entry)
+    await _async_unload_cycle(hass, entry)
     if not await _async_unload_shots(hass, entry):
         return False
     if not await async_unload_controller(hass, entry):

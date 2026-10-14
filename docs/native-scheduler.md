@@ -34,6 +34,15 @@ A P1 diagnostic start opportunity alone cannot authorize execution when Phase 2A
 reports `p1_not_active`. P2/P3 manual modes, drain requirements, thresholds, caps
 and limits remain unchanged.
 
+Phase 3A optionally attaches the separately initialized private
+[`_NativeCycleController`](native-cycle.md). In that harness the scheduler calls
+cycle observation before authorization and after terminal execution; the cycle
+controller owns managed flags/reference and the shared reset lock. The scheduler
+retains its existing listeners and single timer. A supplied uninitialized cycle
+controller is rejected, and stopping latches cycle review. Normal setup still
+initializes none of these components. Legacy Phase 2C harnesses without a cycle
+controller remain supported for isolated regression tests.
+
 ## Event and timer behavior
 
 A filtered HA state-change listener watches configured VWC peers, pump, drain
@@ -105,9 +114,9 @@ never restores an interrupted execution or replays accounting.
 - How will pump ownership be proven and fenced against the Blueprint, manual
   control and other automations? Native owner registries cannot enforce external
   exclusivity. No user automation is inspected or changed here.
-- Who will own native P1 activation/completion, daily phase transitions and reset
-  synchronization after explicit migration? This scheduler only consumes those
-  existing inputs and never makes phase flags imply a missed shot.
+- Phase 3A supplies development-only native phase/reset ownership. Phase 3B must
+  define the explicit production migration and ownership transfer; no phase flag
+  implies that missed shots should run.
 - What explicit reviewed activation, migration, rollback and recovery workflow
   should expose these private components? No production activation is provided.
 - What cooldown and attempted-water budget should apply after partial delivery,

@@ -85,6 +85,8 @@ def _cycle_reset_started(hass: HomeAssistant, entry: ConfigEntry) -> Any:
         return _NoopLock()
     owner._generation += 1
     owner._interrupt("cycle_reset")
+    if owner._cycle is not None:
+        owner._cycle.block("external_cycle_reset_requires_review")
     owner._cycle_id = evaluate(capture_inputs(hass, entry), dt_util.now()).cycle_id
     return owner._accounting_lock
 
@@ -135,6 +137,7 @@ class _ShotCoordinator:
         self._remove_shutdown = None
         self._storage_task: asyncio.Task[Any] | None = None
         self._results: dict[str, ShotResult] = {}
+        self._cycle: Any = None
 
     def _background(self, work: Any) -> asyncio.Task[Any]:
         return self.hass.async_create_background_task(work, "development single shot")
@@ -159,6 +162,7 @@ class _ShotCoordinator:
             and not self.execution_active
             and not self._accounting_lock.locked()
             and self.controller.state == PumpState.IDLE
+            and (self._cycle is None or self._cycle.permits(self._cycle_id))
         )
 
     async def async_initialize(self) -> None:
@@ -276,6 +280,8 @@ class _ShotCoordinator:
             raise ShotRejected(("duplicate_operation",))
         inputs = capture_inputs(self.hass, self.entry)
         decision = evaluate(inputs, dt_util.now())
+        if self._cycle is not None and not self._cycle.permits(decision.cycle_id):
+            raise ShotRejected(("native_cycle_review_required",))
         if decision.cycle_id != self._cycle_id:
             raise ShotRejected(("cycle_reset_required",))
         if not decision.eligible:
@@ -332,6 +338,10 @@ class _ShotCoordinator:
     def _active_safety(self, snapshot: ShotSnapshot) -> str | None:
         if self._closing:
             return "integration_stopping"
+        if self._cycle is not None and not self._cycle.permits(
+            snapshot.decision.cycle_id
+        ):
+            return "native_cycle_review_required"
         if snapshot.generation != self._generation:
             return "cycle_reset"
         inputs = capture_inputs(self.hass, self.entry)
@@ -622,6 +632,15 @@ class _ShotCoordinator:
                             "cycle_id": snapshot.decision.cycle_id,
                             "values": accounting_values,
                         }
+                        if self._cycle is not None:
+                            self._journal["native_counters"] = {
+                                key: options[key]
+                                for key in (
+                                    "p1_shots_done",
+                                    "p2_shots_done",
+                                    "p3_emergency_shots_done",
+                                )
+                            }
                         async_dispatcher_send(
                             self.hass,
                             f"{SIGNAL_NUMBER_STATE_UPDATED}_{self.entry.entry_id}",
@@ -688,6 +707,11 @@ class _ShotCoordinator:
             else:
                 options.pop(key, None)
         self.hass.config_entries.async_update_entry(self.entry, options=options)
+        if self._cycle is not None:
+            self._journal["native_counters"] = {
+                key: options[key]
+                for key in ("p1_shots_done", "p2_shots_done", "p3_emergency_shots_done")
+            }
         if checkpoint is None:
             self._journal.pop("last_accounting", None)
         else:

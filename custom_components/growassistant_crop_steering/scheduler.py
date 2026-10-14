@@ -23,6 +23,7 @@ from homeassistant.helpers.event import async_call_later, async_track_point_in_u
 from homeassistant.util import dt as dt_util
 
 from .const import CONFIG_ENTRY_KEYS, DOMAIN
+from .cycle import _NativeCycleController
 from .irrigation import Decision, capture_inputs, evaluate
 from .pump import _protected
 from .shot_engine import (
@@ -82,13 +83,20 @@ class _NativeScheduler:
     """
 
     def __init__(
-        self, hass: HomeAssistant, entry: ConfigEntry, coordinator: _ShotCoordinator
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        coordinator: _ShotCoordinator,
+        cycle: _NativeCycleController | None = None,
     ) -> None:
         if coordinator.hass is not hass or coordinator.entry is not entry:
             raise ValueError("Coordinator must own this exact entry")
         self.hass = hass
         self.entry = entry
         self.coordinator = coordinator
+        if cycle is not None and cycle.coordinator is not coordinator:
+            raise ValueError("Cycle controller must own this coordinator")
+        self.cycle = cycle
         self.decision: Decision | None = None
         self.next_evaluation: datetime | None = None
         self.retry_blocked = False
@@ -116,6 +124,12 @@ class _NativeScheduler:
             raise RuntimeError("Scheduler already initialized or closed")
         if not self.coordinator.initialized:
             raise RuntimeError("Initialize the shot coordinator first")
+        if self.cycle is not None and (
+            self.coordinator._cycle is not self.cycle
+            or not self.cycle._initialized
+            or self.cycle._closed
+        ):
+            raise RuntimeError("Initialize this cycle controller first")
         owners[self.entry.entry_id] = self
         self._initialized = True
 
@@ -223,6 +237,9 @@ class _NativeScheduler:
     async def _evaluate(self, generation: int) -> bool:
         attempted = False
         now = dt_util.now()
+        if self.cycle is not None:
+            await self.cycle.async_observe(now)
+            now = dt_util.now()
         self.decision = evaluate(capture_inputs(self.hass, self.entry), now)
         self._observed_options = dict(self.entry.options)
         self._observed_data = dict(self.entry.data)
@@ -253,6 +270,8 @@ class _NativeScheduler:
             # Completion/interruption diagnostics are fresh. Do not recursively
             # dispatch, even with zero soak; each request needs a separate wake.
             now = dt_util.now()
+            if self.cycle is not None:
+                await self.cycle.async_observe(now)
             self.decision = evaluate(capture_inputs(self.hass, self.entry), now)
             self._observed_options = dict(self.entry.options)
             self._observed_data = dict(self.entry.data)
@@ -306,6 +325,8 @@ class _NativeScheduler:
     async def async_stop(self) -> None:
         """Detach synchronously, then drain coordinator cancellation safely."""
         self._deactivate()
+        if self.cycle is not None:
+            self.cycle.block("scheduler_stopped_requires_review")
         if self._task is not None and not self._task.done():
             self._task.cancel()
             await _protected(

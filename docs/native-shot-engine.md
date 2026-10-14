@@ -8,6 +8,11 @@ entity IDs, configuration keys and user automations remain unchanged. Phase 2C a
 a separately initialized, inactive [internal scheduler](native-scheduler.md); it
 never starts from normal integration setup.
 
+Phase 3A can attach a private [native cycle controller](native-cycle.md). Its
+ownership gate is checked for new reservations and active safety; native counter
+checkpoints share this journal and reset/accounting lock. An external legacy reset
+blocks the attached cycle for review. No production setup or pump path is added.
+
 ## Ownership barrier before any future activation
 
 An eligibility decision is not permission to activate hardware. A future native
