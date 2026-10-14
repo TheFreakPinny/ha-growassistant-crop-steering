@@ -1,5 +1,15 @@
 # Phase 3B: native safety and migration preparation
 
+Phase 3C now exposes these assessments through [read-only HA diagnostic entities](native-diagnostics.md).
+The Blueprint remains the production executor. Diagnostics assess live VWC and
+read persisted history without constructing any execution controllers. Missing
+history is `not_evaluated`, ownership and physical off are `unverified`, and
+native activation remains prohibited. Migration checklist attributes distinguish
+sensor readiness from unevaluated recovery/cycle state and unverified Blueprint
+relinquishment/exclusive ownership. There is no activation or acknowledgment UI.
+Historical outcomes and recovery reasons are labelled snapshots, not runtime
+authorization or physical delivery evidence. Journals are never repaired or cleared.
+
 Development only. Normal integration setup constructs none of the native pump,
 shot, scheduler or cycle controllers. There is no production activation setting,
 service, button, migration UI, rollback UI or fault-clear API. The Blueprint and

@@ -12,7 +12,7 @@
 The integration provides Home Assistant entities for P0/P1/P2/P3 crop steering logic, irrigation state, soak timing, shot counters, VWC thresholds, drain safety, debugging, and cycle management.
 
 > [!IMPORTANT]
-> GrowAssistant does **not** currently contain a native Python pump-on irrigation engine.
+> GrowAssistant keeps native Python pump-on irrigation **disabled during normal operation**.
 >
 > Pump activation is performed only by the optional Home Assistant Shot Engine Blueprint or by user-created automations.
 >
@@ -1364,3 +1364,12 @@ review blocks and explicit simulated-pump ownership barriers are documented in
 [Native safety and migration](docs/native-safety-migration.md). Normal integration
 setup keeps the native stack inactive. No production activation or migration UI
 is provided, and the Blueprint is unchanged.
+
+### Read-only native diagnostics (Phase 3C)
+
+Normal setup adds diagnostic sensors and binary sensors for native policy status,
+live VWC freshness/quorum/disagreement, historical recovery/shot evidence,
+unverified ownership and the migration checklist. Activation remains prohibited;
+no execution controllers are initialized or native journals modified. The Blueprint
+remains the production executor. See [entities and dashboard examples](docs/native-diagnostics.md)
+and the [architecture/design review](docs/native-diagnostics-design.md).

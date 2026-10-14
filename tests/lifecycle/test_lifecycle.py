@@ -25,6 +25,10 @@ from custom_components.growassistant_crop_steering.const import (
     DOMAIN,
     NUMERIC_SETTING_DESCRIPTIONS,
 )
+from custom_components.growassistant_crop_steering.native_diagnostics import (
+    BINARY_SENSOR_NAMES,
+    SENSOR_NAMES,
+)
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.freeze_time(real_asyncio=True)]
 
@@ -55,6 +59,7 @@ async def test_setup_registers_all_entities_and_device(hass, entry, pump):
     runtime = await setup(hass, entry)
     entities = registered(hass, entry)
     expected = {
+        "binary_sensor": set(BINARY_SENSOR_NAMES),
         "button": {d.key for d in SERVICE_BUTTON_DESCRIPTIONS},
         "number": {d.key for d in NUMERIC_SETTING_DESCRIPTIONS},
         "switch": {d.key for d in BOOLEAN_STATE_DESCRIPTIONS},
@@ -68,6 +73,7 @@ async def test_setup_registers_all_entities_and_device(hass, entry, pump):
             "block_reason",
             "p1_debug",
             "debug",
+            *SENSOR_NAMES,
         },
     }
     assert {platform.value for platform in integration.PLATFORMS} == set(expected)

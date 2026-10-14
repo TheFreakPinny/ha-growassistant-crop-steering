@@ -79,6 +79,7 @@ from .const import (
     SIGNAL_LAST_SHOT_UPDATED,
     VERSION,
 )
+from .native_diagnostics import DATA_DIAGNOSTICS, SENSOR_NAMES, NativeDiagnosticEntity
 from .vwc import calculate_vwc_state, normalize_vwc_sensors
 
 _PHASE_OFF = "off"
@@ -200,8 +201,22 @@ async def async_setup_entry(
             GrowAssistantBlockReasonSensor(hass, entry),
             GrowAssistantP1DebugSensor(hass, entry),
             GrowAssistantDebugSensor(hass, entry),
+            *[
+                GrowAssistantNativeDiagnosticSensor(
+                    hass.data[DOMAIN][DATA_DIAGNOSTICS][entry.entry_id], key
+                )
+                for key in SENSOR_NAMES
+            ],
         ]
     )
+
+
+class GrowAssistantNativeDiagnosticSensor(NativeDiagnosticEntity, SensorEntity):
+    """Read-only native policy, live assessment or labelled historical evidence."""
+
+    @property
+    def native_value(self) -> str | int | None:
+        return self.coordinator.data[self.key][0]
 
 
 class GrowAssistantStatusSensor(SensorEntity):
