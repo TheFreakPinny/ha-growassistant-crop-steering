@@ -1,6 +1,6 @@
 """Development-only single shots. Never constructed by integration setup.
 
-No scheduler or public activation surface. See docs/native-shot-engine.md for
+No public activation surface. See docs/native-shot-engine.md for
 ownership, active safety policy and the intentionally fail-closed crash journal.
 """
 
@@ -26,6 +26,7 @@ from .number import SIGNAL_NUMBER_STATE_UPDATED
 from .pump import HARD_MAX_RUNTIME, PumpController, PumpState, _protected
 
 _KEY = f"{DOMAIN}.development_shots"
+SIGNAL_SHOT_FINISHED = f"{DOMAIN}.development_shot_finished"
 MONITOR_INTERVAL = 0.01
 JOURNAL_TIMEOUT = 5.0
 _PREFIX = {"p1_morning": "p1", "p2_midday": "p2", "p3_dryback": "p3_emergency"}
@@ -137,6 +138,28 @@ class _ShotCoordinator:
 
     def _background(self, work: Any) -> asyncio.Task[Any]:
         return self.hass.async_create_background_task(work, "development single shot")
+
+    @property
+    def initialized(self) -> bool:
+        """Whether initialization finished and the coordinator remains open."""
+        return self._ready and not self._closing
+
+    @property
+    def execution_active(self) -> bool:
+        """A reservation or execution is pending; requests must never queue."""
+        return self._task is not None and not self._task.done()
+
+    @property
+    def execution_available(self) -> bool:
+        """Read-only readiness hint; async_execute still enforces every gate."""
+        return (
+            self._ready
+            and not self._blocked
+            and not self._closing
+            and not self.execution_active
+            and not self._accounting_lock.locked()
+            and self.controller.state == PumpState.IDLE
+        )
 
     async def async_initialize(self) -> None:
         """Load journal; unresolved operations require manual review, never replay."""
@@ -280,6 +303,7 @@ class _ShotCoordinator:
         }
         # No await before task assignment: reservation is serialized on HA's loop.
         self._task = self._background(self._execute(self.snapshot))
+        self._task.add_done_callback(self._notify_finished)
         try:
             return await asyncio.shield(self._task)
         except asyncio.CancelledError:
@@ -289,6 +313,15 @@ class _ShotCoordinator:
             except asyncio.CancelledError:
                 pass
             raise
+
+    @callback
+    def _notify_finished(self, task: asyncio.Task[ShotResult]) -> None:
+        result = (
+            None if task.cancelled() or task.exception() is not None else task.result()
+        )
+        async_dispatcher_send(
+            self.hass, f"{SIGNAL_SHOT_FINISHED}_{self.entry.entry_id}", result
+        )
 
     @callback
     def _interrupt(self, reason: str) -> None:

@@ -2,9 +2,11 @@
 
 **Development only. The legacy Blueprint remains the active executor.** Normal
 integration setup never constructs or initializes `_ShotCoordinator` or
-`PumpController`. No activation service, button, automation, scheduler, migration,
+`PumpController`. No production activation service, button, automation, migration,
 catch-up, or production enablement option is added. Existing pump stop services,
-entity IDs, configuration keys and user automations remain unchanged.
+entity IDs, configuration keys and user automations remain unchanged. Phase 2C adds
+a separately initialized, inactive [internal scheduler](native-scheduler.md); it
+never starts from normal integration setup.
 
 ## Ownership barrier before any future activation
 
