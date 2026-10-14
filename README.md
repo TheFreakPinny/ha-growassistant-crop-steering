@@ -1347,3 +1347,12 @@ Phase 2B execution, with coalesced HA events, one boundary/soak timer, no queued
 shots and fail-closed recovery. Normal setup never initializes or starts it; the
 unchanged Blueprint remains the only production executor. See [scheduler
 architecture and unresolved activation/migration questions](docs/native-scheduler.md).
+
+### Native phase and cycle controller (development only)
+
+Phase 3A adds private sunrise-based phase ownership, P1 readiness/completion,
+cycle-owned P2 references and reset coordination with native shot accounting.
+The existing scheduler supplies its events and timer. Restarts, incomplete writes
+and ambiguous ownership block execution for review. Normal setup never constructs
+or activates it, and the production Blueprint is unchanged. See [phase rules,
+ownership, recovery and Phase 3B questions](docs/native-cycle.md).
