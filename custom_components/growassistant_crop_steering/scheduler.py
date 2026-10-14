@@ -24,7 +24,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import CONFIG_ENTRY_KEYS, DOMAIN
 from .cycle import _NativeCycleController
-from .irrigation import Decision, capture_inputs, evaluate
+from .irrigation import Decision
 from .pump import _protected
 from .shot_engine import (
     SIGNAL_SHOT_FINISHED,
@@ -240,7 +240,7 @@ class _NativeScheduler:
         if self.cycle is not None:
             await self.cycle.async_observe(now)
             now = dt_util.now()
-        self.decision = evaluate(capture_inputs(self.hass, self.entry), now)
+        self.decision = self.coordinator.validated_decision(now)
         self._observed_options = dict(self.entry.options)
         self._observed_data = dict(self.entry.data)
         if (
@@ -272,7 +272,7 @@ class _NativeScheduler:
             now = dt_util.now()
             if self.cycle is not None:
                 await self.cycle.async_observe(now)
-            self.decision = evaluate(capture_inputs(self.hass, self.entry), now)
+            self.decision = self.coordinator.validated_decision(now)
             self._observed_options = dict(self.entry.options)
             self._observed_data = dict(self.entry.data)
         if generation == self._generation and self._running:

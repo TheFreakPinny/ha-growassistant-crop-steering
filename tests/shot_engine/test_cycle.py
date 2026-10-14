@@ -203,6 +203,13 @@ async def test_existing_completion_triggers(engine, cycle, shot_clock, trigger):
     await cycle.async_observe()
     assert engine.entry.options["p1_done"] is True
     assert engine.entry.options["p2_ref_vwc"] == (60 if trigger == "capacity" else 40)
+    assert cycle.record["completion_reasons"] == [
+        {
+            "capacity": "field_capacity_reached",
+            "limit": "shot_limit_reached",
+            "drain": "drain_sensor_wet",
+        }[trigger]
+    ]
 
 
 @pytest.mark.parametrize(
@@ -680,6 +687,9 @@ async def test_manual_p2_never_automatically_eligible(engine, cycle, shot_clock)
 
 
 async def test_available_sensor_mean_reference_preserved(engine, cycle, shot_clock):
+    from custom_components.growassistant_crop_steering.native_safety import SensorPolicy
+
+    engine.sensor_policy = SensorPolicy(minimum_percent=50)
     engine.hass.config_entries.async_update_entry(
         engine.entry,
         data={**engine.entry.data, "vwc_sensor": ["sensor.vwc", "sensor.missing"]},

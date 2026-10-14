@@ -4,6 +4,9 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.growassistant_crop_steering.const import CONF_PUMP_SWITCH, DOMAIN
+from custom_components.growassistant_crop_steering.native_safety import (
+    OwnershipEvidence,
+)
 from custom_components.growassistant_crop_steering.pump import PumpController
 
 
@@ -29,6 +32,7 @@ async def controller(hass, monkeypatch):
     hass.services.async_register("switch", "turn_on", service)
     hass.services.async_register("switch", "turn_off", service)
     pump = PumpController(hass, entry)
+    pump.ownership = OwnershipEvidence("switch.pump", True, True, True, True)
     await pump.async_initialize()
     yield pump
     await pump.async_close()

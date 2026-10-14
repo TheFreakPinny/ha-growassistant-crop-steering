@@ -23,6 +23,7 @@ from homeassistant.util import dt as dt_util
 
 from .config import configured_entity_value
 from .const import CONF_PUMP_SWITCH, DOMAIN
+from .native_safety import OwnershipEvidence
 
 HARD_MAX_RUNTIME = 300.0
 SERVICE_TIMEOUT = 5.0
@@ -79,6 +80,9 @@ class PumpController:
         )
         self.state = PumpState.NEW
         self.fault: str | None = None
+        self.recovery_reasons: tuple[str, ...] = ()
+        self.restart_had_recovery = False
+        self.ownership: OwnershipEvidence | None = None
         self._record: dict[str, Any] | None = None
         self._lock = asyncio.Lock()
         self._stop_requested = False
@@ -117,16 +121,20 @@ class PumpController:
                 async with asyncio.timeout(STORAGE_TIMEOUT):
                     self._record = await self.store.async_load()
             except Exception as err:
-                self._set_fault(f"Recovery load failed: {err}")
+                self._set_fault(f"Recovery load failed: {err}", "storage_inconsistency")
                 return
             if self._record is None:
                 self.state = PumpState.IDLE
                 return
+            self.restart_had_recovery = True
             # Never discard unreadable records or trust a stored 'idle' state.
             if not isinstance(self._record, dict) or not self._valid_entity(
                 self._record.get("entity_id")
             ):
-                self._set_fault("Invalid recovery record; manual repair required")
+                self._set_fault(
+                    "Invalid recovery record; manual repair required",
+                    "storage_inconsistency",
+                )
                 return
             await self._stop_locked()
 
@@ -190,6 +198,7 @@ class PumpController:
         async with self._lock:
             if (
                 self.state != PumpState.IDLE
+                or self.restart_had_recovery
                 or self._closing
                 or self._cancelled_activations
                 or self._stop_requested
@@ -212,6 +221,11 @@ class PumpController:
                 for service in ("turn_on", "turn_off")
             ):
                 raise PumpError("Pump on/off services are unavailable")
+            ownership = self.ownership
+            if ownership is None or ownership.reasons(entity_id):
+                raise PumpError(
+                    "Pump ownership unknown, unverified or production activation prohibited"
+                )
             monotonic_start = self.hass.loop.time()
             now = dt_util.utcnow()
             operation_id = reserved_operation or uuid4().hex
@@ -229,6 +243,8 @@ class PumpController:
                 remaining = runtime - (self.hass.loop.time() - monotonic_start)
                 if self._closing or self._stop_requested or remaining <= 0:
                     raise PumpError("Activation aborted before service dispatch")
+                if self.ownership != ownership or ownership.reasons(entity_id):
+                    raise PumpError("Pump ownership changed before dispatch")
                 if revalidate is not None and not revalidate():
                     raise PumpError("Final shot safety revalidation failed")
                 self._deadline_handle = self.hass.loop.call_later(
@@ -310,9 +326,10 @@ class PumpController:
         async with self._lock:
             return await self._stop_locked()
 
-    def _set_fault(self, reason: str) -> None:
+    def _set_fault(self, reason: str, code: str = "unconfirmed_pump_shutdown") -> None:
         self.state = PumpState.FAULT
         self.fault = reason
+        self.recovery_reasons = (code,)
 
     async def _stop_locked(self) -> bool:
         if self._deadline_handle is not None:
@@ -328,7 +345,7 @@ class PumpController:
         if not isinstance(self._record, dict) or not self._valid_entity(
             self._record.get("entity_id")
         ):
-            self._set_fault("Invalid recovery target")
+            self._set_fault("Invalid recovery target", "storage_inconsistency")
             return False
         self.state = PumpState.STOPPING
         self._record["state"] = self.state.value
@@ -377,6 +394,7 @@ class PumpController:
             self._record = None
             self.state = PumpState.IDLE
             self.fault = None
+            self.recovery_reasons = ()
             self._stop_requested = False
             return True
         except Exception as err:

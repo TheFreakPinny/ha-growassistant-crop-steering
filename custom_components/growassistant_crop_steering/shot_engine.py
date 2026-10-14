@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 from uuid import uuid4
@@ -22,6 +23,14 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_LAST_SHOT_UPDATED
 from .irrigation import Decision, Inputs, capture_inputs, evaluate
+from .native_safety import (
+    OwnershipEvidence,
+    RecoveryAssessment,
+    SensorAssessment,
+    SensorPolicy,
+    assess_recovery,
+    assess_sensors,
+)
 from .number import SIGNAL_NUMBER_STATE_UPDATED
 from .pump import HARD_MAX_RUNTIME, PumpController, PumpState, _protected
 
@@ -61,6 +70,8 @@ class ShotSnapshot:
     decision: Decision
     inputs: Inputs
     generation: int
+    sensor_policy: SensorPolicy
+    ownership: OwnershipEvidence
 
 
 @dataclass(frozen=True)
@@ -138,6 +149,9 @@ class _ShotCoordinator:
         self._storage_task: asyncio.Task[Any] | None = None
         self._results: dict[str, ShotResult] = {}
         self._cycle: Any = None
+        self.sensor_policy = SensorPolicy()
+        self.ownership: OwnershipEvidence | None = None
+        self._storage_failed = False
 
     def _background(self, work: Any) -> asyncio.Task[Any]:
         return self.hass.async_create_background_task(work, "development single shot")
@@ -161,9 +175,108 @@ class _ShotCoordinator:
             and not self._closing
             and not self.execution_active
             and not self._accounting_lock.locked()
+            and not self.sensor_assessment().reasons
+            and not self._ownership_reasons(
+                self.capture_validated_inputs().config["pump_switch"]
+            )
             and self.controller.state == PumpState.IDLE
             and (self._cycle is None or self._cycle.permits(self._cycle_id))
         )
+
+    def capture_validated_inputs(self) -> Inputs:
+        """Preserve arithmetic mean over only the policy's validated peers."""
+        inputs = capture_inputs(self.hass, self.entry)
+        assessment = self.sensor_assessment()
+        return Inputs(
+            inputs.config,
+            {
+                entity: None if entity in assessment.rejected else value
+                for entity, value in inputs.vwc.items()
+            },
+        )
+
+    def validated_decision(self, now: datetime) -> Decision:
+        """Add native policy diagnostics without changing Blueprint decisions."""
+        decision = evaluate(self.capture_validated_inputs(), now)
+        reasons = self.sensor_assessment().reasons
+        if not reasons:
+            return decision
+        return replace(
+            decision,
+            eligible=False,
+            p1_start_eligible=False,
+            blocking_reasons=tuple(
+                dict.fromkeys((*decision.blocking_reasons, *reasons))
+            ),
+            p1_start_blocking_reasons=tuple(
+                dict.fromkeys((*decision.p1_start_blocking_reasons, *reasons))
+            ),
+        )
+
+    def sensor_assessment(
+        self, overrides: dict[str, Any] | None = None
+    ) -> SensorAssessment:
+        """Same freshness/quorum policy for authorization and supervision."""
+        configured = self.entry.options.get(
+            "vwc_sensor", self.entry.data.get("vwc_sensor")
+        )
+        return assess_sensors(
+            self.hass, configured, dt_util.utcnow(), self.sensor_policy, overrides
+        )
+
+    @property
+    def recovery_assessment(self) -> RecoveryAssessment:
+        cycle = self._cycle
+        return assess_recovery(
+            journal=self._journal,
+            pump_unresolved=self.controller.state in {PumpState.FAULT, PumpState.NEW},
+            pump_restart_unresolved=self.controller.restart_had_recovery,
+            pump_reasons=self.controller.recovery_reasons,
+            cycle=None if cycle is None else cycle.record,
+            cycle_reason=None if cycle is None else cycle.recovery_reason,
+            sensor_reasons=self.sensor_assessment().reasons,
+            storage_failed=self._storage_failed,
+        )
+
+    @property
+    def delivery_assessment(self) -> dict[str, Any]:
+        """Attempt history is separate from successful-shot budget counters.
+
+        Any uncertain attempt blocks all further execution; no volume is inferred
+        and no reset erases attempts. A future meter can supply a separate ledger.
+        """
+        records = list(self._journal["operations"].values())
+        return {
+            "reservations": len(records),
+            "successful_shots": sum(
+                record.get("state") == ShotState.COMPLETED
+                and record.get("accounted") is True
+                for record in records
+            ),
+            "uncertain_attempts": sum(
+                bool(record.get("delivery_uncertain"))
+                or (
+                    record.get("state") in {ShotState.INTERRUPTED, ShotState.FAULT}
+                    and record.get("delivery") != "not_requested"
+                )
+                for record in records
+            ),
+            "delivered_volume": None,
+            "replacement_blocked": self._blocked,
+        }
+
+    def _ownership_reasons(self, pump_entity: str | None) -> tuple[str, ...]:
+        reasons = (
+            ("pump_ownership_unknown",)
+            if self.ownership is None
+            else self.ownership.reasons(pump_entity)
+        )
+        controller_reasons = (
+            ("pump_ownership_unknown",)
+            if self.controller.ownership is None
+            else self.controller.ownership.reasons(pump_entity)
+        )
+        return tuple(dict.fromkeys((*reasons, *controller_reasons)))
 
     async def async_initialize(self) -> None:
         """Load journal; unresolved operations require manual review, never replay."""
@@ -177,7 +290,7 @@ class _ShotCoordinator:
         )
         try:
             self._cycle_id = evaluate(
-                capture_inputs(self.hass, self.entry), dt_util.now()
+                self.capture_validated_inputs(), dt_util.now()
             ).cycle_id
             async with asyncio.timeout(JOURNAL_TIMEOUT):
                 journal = await self.store.async_load()
@@ -194,49 +307,89 @@ class _ShotCoordinator:
                 ):
                     raise ValueError("invalid shot journal")
                 self._journal = journal
+                if self.controller.restart_had_recovery:
+                    journal["pump_restart_requires_review"] = True
+                    self._blocked = True
                 for record in journal["operations"].values():
                     if record["state"] not in {
                         ShotState.COMPLETED,
                         ShotState.INTERRUPTED,
                         ShotState.FAULT,
                     } or record.get("accounting_pending"):
+                        if (
+                            record["state"]
+                            in {
+                                ShotState.STARTING,
+                                ShotState.RUNNING,
+                                ShotState.STOPPING,
+                                ShotState.COMPLETED,
+                            }
+                            or record.get("activation_requested_at")
+                            or record.get("accounting_pending")
+                        ):
+                            record.update(
+                                delivery="possible_partial",
+                                delivery_uncertain=True,
+                                delivered_volume=None,
+                            )
+                        record["restart_original_state"] = record["state"]
                         record.update(
                             state=ShotState.INTERRUPTED.value,
                             reason="restart_requires_review",
                             recovery_required=True,
+                            restart_original_reason=record.get("reason"),
                         )
+                    if (
+                        record["state"] == ShotState.COMPLETED
+                        and record.get("accounted") is not True
+                    ):
+                        record["recovery_required"] = True
+                        journal["accounting_inconsistent"] = True
+                    if record["state"] in {ShotState.INTERRUPTED, ShotState.FAULT}:
+                        record["recovery_required"] = True
                     self._blocked |= bool(record.get("recovery_required"))
                 checkpoint = journal.get("last_accounting")
+                if checkpoint is None and any(
+                    record["state"] == ShotState.COMPLETED
+                    and record.get("accounted") is True
+                    for record in journal["operations"].values()
+                ):
+                    self._blocked = True
+                    journal["recovery_required"] = True
+                    journal["accounting_inconsistent"] = True
                 if checkpoint is not None:
                     if not isinstance(checkpoint, dict) or not isinstance(
                         checkpoint.get("values"), dict
                     ):
                         raise ValueError("invalid accounting checkpoint")
-                    current = evaluate(
-                        capture_inputs(self.hass, self.entry), dt_util.now()
-                    )
+                    if not checkpoint["values"]:
+                        self._blocked = True
+                        journal["recovery_required"] = True
+                        journal["accounting_inconsistent"] = True
+                    current = evaluate(self.capture_validated_inputs(), dt_util.now())
                     if current.cycle_id == checkpoint.get("cycle_id") and any(
                         self.entry.options.get(key) != value
                         for key, value in checkpoint["values"].items()
                     ):
                         self._blocked = True
                         journal["recovery_required"] = True
-                    elif current.cycle_id != checkpoint.get("cycle_id") and any(
-                        capture_inputs(self.hass, self.entry).config[key] != 0
-                        for key in (
-                            "p1_shots_done",
-                            "p2_shots_done",
-                            "p3_emergency_shots_done",
-                        )
-                    ):
+                        journal["accounting_inconsistent"] = True
+                    elif current.cycle_id != checkpoint.get("cycle_id"):
                         self._blocked = True
                         journal["recovery_required"] = True
+                        journal["missed_cycle_reset"] = True
                 self._blocked |= bool(journal.get("recovery_required"))
+                self._blocked |= bool(journal.get("pump_restart_requires_review"))
+                await self._save()
+            if self.controller.restart_had_recovery:
+                self._blocked = True
+                self._journal["pump_restart_requires_review"] = True
                 await self._save()
             self._ready = True
             if self._blocked:
                 self.state = ShotState.FAULT
         except Exception:
+            self._storage_failed = True
             self._blocked = True
             self.state = ShotState.FAULT
             raise
@@ -265,6 +418,8 @@ class _ShotCoordinator:
             or len(operation_id) > 128
         ):
             raise ShotRejected(("invalid_operation_id",))
+        if operation_id in self._journal["operations"]:
+            raise ShotRejected(("duplicate_operation",))
         if (
             not self._ready
             or self._blocked
@@ -278,17 +433,30 @@ class _ShotCoordinator:
             raise ShotRejected(("cycle_reset_in_progress",))
         if operation_id in self._journal["operations"]:
             raise ShotRejected(("duplicate_operation",))
-        inputs = capture_inputs(self.hass, self.entry)
+        inputs = self.capture_validated_inputs()
         decision = evaluate(inputs, dt_util.now())
         if self._cycle is not None and not self._cycle.permits(decision.cycle_id):
             raise ShotRejected(("native_cycle_review_required",))
         if decision.cycle_id != self._cycle_id:
             raise ShotRejected(("cycle_reset_required",))
+        sensor_reasons = self.sensor_assessment().reasons
+        if sensor_reasons:
+            raise ShotRejected(sensor_reasons)
         if not decision.eligible:
             raise ShotRejected(decision.blocking_reasons)
         if not 0 < decision.duration_s <= HARD_MAX_RUNTIME:
             raise ShotRejected(("controller_runtime_limit",))
-        self.snapshot = ShotSnapshot(operation_id, decision, inputs, self._generation)
+        ownership_reasons = self._ownership_reasons(decision.pump_entity)
+        if ownership_reasons:
+            raise ShotRejected(ownership_reasons)
+        self.snapshot = ShotSnapshot(
+            operation_id,
+            decision,
+            inputs,
+            self._generation,
+            self.sensor_policy,
+            self.ownership,
+        )
         self._drain_assignment = {
             key: self.entry.options.get(key, self.entry.data.get(key))
             for key in ("drain_sensor", "drain_tray_sensor")
@@ -306,6 +474,11 @@ class _ShotCoordinator:
             "vwc": dict(inputs.vwc),
             "reserved_at": dt_util.utcnow().isoformat(),
             "accounted": False,
+            "delivery": "not_requested",
+            "delivered_volume": None,
+            "sensor_validation": self.sensor_assessment().diagnostic(),
+            "sensor_policy": asdict(self.sensor_policy),
+            "ownership_evidence": asdict(self.ownership),
         }
         # No await before task assignment: reservation is serialized on HA's loop.
         self._task = self._background(self._execute(self.snapshot))
@@ -344,8 +517,19 @@ class _ShotCoordinator:
             return "native_cycle_review_required"
         if snapshot.generation != self._generation:
             return "cycle_reset"
-        inputs = capture_inputs(self.hass, self.entry)
+        inputs = self.capture_validated_inputs()
         config = inputs.config
+        ownership = self._ownership_reasons(snapshot.decision.pump_entity)
+        if ownership:
+            return ownership[0]
+        if (
+            self.ownership != snapshot.ownership
+            or self.sensor_policy != snapshot.sensor_policy
+        ):
+            return "safety_policy_changed"
+        sensors = self.sensor_assessment()
+        if sensors.reasons:
+            return sensors.reasons[0]
         if config["pump_switch"] != snapshot.decision.pump_entity:
             return "pump_reassigned"
         if config["pump_state"] not in {"on", "off"}:
@@ -400,7 +584,7 @@ class _ShotCoordinator:
         reason = self._active_safety(snapshot)
         if reason:
             self._interrupt(reason)
-        current = evaluate(capture_inputs(self.hass, self.entry), dt_util.now())
+        current = evaluate(self.capture_validated_inputs(), dt_util.now())
         return (
             not self._abort.is_set()
             and current.eligible
@@ -415,7 +599,7 @@ class _ShotCoordinator:
                     "shot_limit",
                 )
             )
-            and dict(capture_inputs(self.hass, self.entry).config)
+            and dict(self.capture_validated_inputs().config)
             == dict(snapshot.inputs.config)
         )
 
@@ -483,13 +667,9 @@ class _ShotCoordinator:
                 }:
                     self._interrupt(key + "_unsafe")
             if entity in observed_vwc:
-                observed_vwc[entity] = value
-                diagnostic = evaluate(
-                    Inputs(snapshot.inputs.config, observed_vwc), dt_util.now()
-                )
-                for reason in ("invalid_vwc", "vwc_unavailable"):
-                    if reason in diagnostic.blocking_reasons:
-                        self._interrupt(reason)
+                assessment = self.sensor_assessment({entity: state})
+                if assessment.reasons:
+                    self._interrupt(assessment.reasons[0])
 
         remove = self.hass.bus.async_listen("state_changed", state_changed)
         supervisor = None
@@ -501,6 +681,9 @@ class _ShotCoordinator:
                 return await self._finish(snapshot, False)
             self.state = ShotState.STARTING
             record["state"] = self.state.value
+            # Durable conservative intent: a crash after this may deliver water.
+            record["delivery"] = "possible_partial"
+            record["activation_requested_at"] = dt_util.utcnow().isoformat()
             await self._save()
             started = self.hass.loop.time()
             # Controller's hard deadline includes activation latency. Allow only
@@ -522,6 +705,7 @@ class _ShotCoordinator:
                 return await self._finish(snapshot, False)
             self.state = ShotState.RUNNING
             record["state"] = self.state.value
+            record["activation_confirmed_at"] = dt_util.utcnow().isoformat()
             # Nominal duration is elapsed from controller activation request,
             # not another full duration after a delayed service completion.
             remaining = max(
@@ -583,11 +767,27 @@ class _ShotCoordinator:
             if snapshot.generation != self._generation:
                 success = False
                 terminal = ShotState.INTERRUPTED if stopped else ShotState.FAULT
+            uncertain = not success and record.get("delivery") == "possible_partial"
+            self._blocked |= uncertain
             record.update(
                 state=terminal.value,
+                shutdown_confirmed=stopped,
+                delivery_uncertain=uncertain,
+                delivery="software_completed"
+                if success
+                else record.get("delivery", "not_requested"),
+                outcome=(
+                    "completed"
+                    if success
+                    else "unconfirmed_shutdown"
+                    if not stopped
+                    else "interrupted"
+                    if record.get("activation_confirmed_at")
+                    else "failed_activation"
+                ),
                 reason=self._reason,
                 finished_at=dt_util.utcnow().isoformat(),
-                recovery_required=not stopped,
+                recovery_required=not stopped or uncertain,
             )
             try:
                 previous_options = dict(self.entry.options)
@@ -612,7 +812,7 @@ class _ShotCoordinator:
                         prefix = _PREFIX[snapshot.decision.phase]
                         options = dict(self.entry.options)
                         current = float(
-                            capture_inputs(self.hass, self.entry).config[
+                            self.capture_validated_inputs().config[
                                 prefix + "_shots_done"
                             ]
                         )
@@ -649,6 +849,20 @@ class _ShotCoordinator:
                             self.hass,
                             f"{SIGNAL_LAST_SHOT_UPDATED}_{self.entry.entry_id}",
                         )
+                if terminal != ShotState.COMPLETED and record.get(
+                    "activation_requested_at"
+                ):
+                    self._blocked = True
+                    record.update(
+                        delivery="possible_partial",
+                        delivery_uncertain=True,
+                        recovery_required=True,
+                        outcome="unconfirmed_shutdown"
+                        if not stopped
+                        else "interrupted"
+                        if record.get("activation_confirmed_at")
+                        else "failed_activation",
+                    )
                 await self._save()
                 if record["accounted"] and self._abort.is_set():
                     # Cancellation/reset while the final journal write was in
@@ -665,6 +879,13 @@ class _ShotCoordinator:
                     )
                     record.update(accounted=False, accounting_pending=False)
                     terminal = ShotState.INTERRUPTED
+                    self._blocked = True
+                    record.update(
+                        delivery="possible_partial",
+                        delivery_uncertain=True,
+                        recovery_required=True,
+                        outcome="interrupted",
+                    )
                     await self._save()
             except Exception as err:
                 if record["accounted"] and accounting_values is not None:
@@ -679,9 +900,17 @@ class _ShotCoordinator:
                         pass
                 terminal = ShotState.FAULT
                 self._blocked = True
+                self._storage_failed = True
                 self._reason = f"accounting_or_journal_failed: {err}"
                 record.update(
-                    state=terminal.value, reason=self._reason, recovery_required=True
+                    state=terminal.value,
+                    reason=self._reason,
+                    recovery_required=True,
+                    outcome="accounting_or_storage_fault",
+                    delivery="possible_partial"
+                    if record.get("activation_requested_at")
+                    else "not_requested",
+                    delivery_uncertain=bool(record.get("activation_requested_at")),
                 )
                 # Retain intent on disk; never replay a potentially applied count.
             self.state = terminal

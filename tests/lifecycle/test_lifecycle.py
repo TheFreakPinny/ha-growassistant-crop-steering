@@ -331,7 +331,12 @@ async def test_explicit_native_controller_unload_and_reload(hass, entry, pump):
     )
 
     await setup(hass, entry)
+    from custom_components.growassistant_crop_steering.native_safety import (
+        OwnershipEvidence,
+    )
+
     owner = PumpController(hass, entry)
+    owner.ownership = OwnershipEvidence("switch.pump", True, True, True, True)
     await owner.async_initialize()
 
     async def switch_service(call):
@@ -367,7 +372,12 @@ async def test_native_shutdown_fault_prevents_entry_unload(hass, entry, monkeypa
     # HA's fixture overrides loop.time after freezer applies real_asyncio.
     # Pump safety timeouts need a monotonic clock that continues to advance.
     monkeypatch.setattr(hass.loop, "time", real_monotonic)
+    from custom_components.growassistant_crop_steering.native_safety import (
+        OwnershipEvidence,
+    )
+
     owner = PumpController(hass, entry)
+    owner.ownership = OwnershipEvidence("switch.pump", True, True, True, True)
     await owner.async_initialize()
 
     async def on(call):

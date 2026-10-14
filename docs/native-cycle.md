@@ -1,5 +1,10 @@
 # Native phase and cycle management (Phase 3A)
 
+**Phase 3B update:** [Safety and migration preparation](native-safety-migration.md)
+supersedes the earlier open questions below about freshness/quorum, restart
+classification, partial-delivery review and pump ownership. Native remains
+development-only and normal setup remains inactive.
+
 Development only. Normal setup does not construct, initialize or start the native
 cycle controller. The Blueprint and production reset coordinator are unchanged.
 Only internal test harnesses may attach a cycle controller to the native scheduler
