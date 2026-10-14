@@ -1378,3 +1378,12 @@ unverified ownership and the migration checklist. Activation remains prohibited;
 no execution controllers are initialized or native journals modified. The Blueprint
 remains the production executor. See [entities and dashboard examples](docs/native-diagnostics.md)
 and the [architecture/design review](docs/native-diagnostics-design.md).
+
+### Native simulation test harness (development only)
+
+The pytest-only [Native Crop Steering harness](docs/native-test-harness.md)
+composes the existing controllers with three virtual VWC sensors, fixed fake pump
+IO, an injected civil clock and in-memory recovery journals. It exercises P0–P3,
+P1 capacity/start semantics, accounting, pump faults and restart/recovery without
+invoking HA switching services. Native execution remains disabled in normal setup;
+the integration and production Blueprint are unchanged.
