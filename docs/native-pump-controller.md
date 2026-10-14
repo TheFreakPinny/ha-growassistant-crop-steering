@@ -1,5 +1,10 @@
 # Native pump controller: phase 1
 
+**Phase 3B update:** [Safety and migration preparation](native-safety-migration.md)
+supersedes the earlier open questions below about freshness/quorum, restart
+classification, partial-delivery review and pump ownership. Native remains
+development-only and normal setup remains inactive.
+
 ## Scope and architecture verification
 
 Based on main `a70caba4141f2dd1b6d5790089231e721908f9b9`, including merged PR #67.

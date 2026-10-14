@@ -7,6 +7,9 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.growassistant_crop_steering.const import DOMAIN
+from custom_components.growassistant_crop_steering.native_safety import (
+    OwnershipEvidence,
+)
 from custom_components.growassistant_crop_steering.pump import PumpController
 from custom_components.growassistant_crop_steering.shot_engine import _ShotCoordinator
 
@@ -14,20 +17,34 @@ from custom_components.growassistant_crop_steering.shot_engine import _ShotCoord
 class ShotClock:
     """Patch HA's civil clock while retaining real event-loop monotonic timers."""
 
-    def __init__(self):
+    def __init__(self, hass):
+        self.hass = hass
         self.move_to("2026-10-13 08:00:00+00:00")
 
     def move_to(self, value):
         self.at = datetime.fromisoformat(value)
+        # Simulate new physical reports alongside ordinary civil-clock advances.
+        # Freshness tests advance .at directly to leave old samples untouched.
+        for state in self.hass.states.async_all("sensor"):
+            self.hass.states.async_set(
+                state.entity_id, state.state, dict(state.attributes), force_update=True
+            )
 
 
 @pytest.fixture
-def shot_clock(monkeypatch):
-    clock = ShotClock()
+def shot_clock(monkeypatch, hass):
+    clock = ShotClock(hass)
     monkeypatch.setattr(dt_util, "utcnow", lambda: clock.at)
     monkeypatch.setattr(
         dt_util, "now", lambda: clock.at.astimezone(dt_util.DEFAULT_TIME_ZONE)
     )
+    original_set = type(hass.states).async_set
+
+    def set_at_clock(machine, entity_id, new_state, attributes=None, **kwargs):
+        kwargs.setdefault("timestamp", clock.at.timestamp())
+        original_set(machine, entity_id, new_state, attributes, **kwargs)
+
+    monkeypatch.setattr(type(hass.states), "async_set", set_at_clock)
     return clock
 
 
@@ -87,6 +104,14 @@ async def engine(hass, shot_clock, monkeypatch, enable_custom_integrations):
     pump = PumpController(hass, entry)
     await pump.async_initialize()
     coordinator = _ShotCoordinator(hass, entry, pump)
+    coordinator.ownership = OwnershipEvidence(
+        "switch.pump",
+        legacy_relinquished=True,
+        related_writers_reviewed=True,
+        exclusive_control_verified=True,
+        simulated_pump=True,
+    )
+    pump.ownership = coordinator.ownership
     await coordinator.async_initialize()
     coordinator.calls = calls
     coordinator.simulated_service = service

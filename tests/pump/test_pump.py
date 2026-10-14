@@ -99,6 +99,11 @@ async def test_input_boolean_selector_compatibility(hass, controller):
 
     for action in ("turn_on", "turn_off"):
         hass.services.async_register("input_boolean", action, service)
+    from dataclasses import replace
+
+    controller.ownership = replace(
+        controller.ownership, pump_entity="input_boolean.pump"
+    )
     await controller.async_activate(1)
     assert await controller.async_stop()
 

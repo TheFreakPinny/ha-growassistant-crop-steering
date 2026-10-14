@@ -1356,3 +1356,11 @@ The existing scheduler supplies its events and timer. Restarts, incomplete write
 and ambiguous ownership block execution for review. Normal setup never constructs
 or activates it, and the production Blueprint is unchanged. See [phase rules,
 ownership, recovery and Phase 3B questions](docs/native-cycle.md).
+
+### Native safety and migration preparation (Phase 3B)
+
+Development-only recovery diagnostics, sensor freshness/quorum, uncertain-delivery
+review blocks and explicit simulated-pump ownership barriers are documented in
+[Native safety and migration](docs/native-safety-migration.md). Normal integration
+setup keeps the native stack inactive. No production activation or migration UI
+is provided, and the Blueprint is unchanged.

@@ -1,5 +1,10 @@
 # Native single-shot execution (Phase 2B)
 
+**Phase 3B update:** [Safety and migration preparation](native-safety-migration.md)
+supersedes the earlier open questions below about freshness/quorum, restart
+classification, partial-delivery review and pump ownership. Native remains
+development-only and normal setup remains inactive.
+
 **Development only. The legacy Blueprint remains the active executor.** Normal
 integration setup never constructs or initializes `_ShotCoordinator` or
 `PumpController`. No production activation service, button, automation, migration,

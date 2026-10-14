@@ -1,5 +1,10 @@
 # Native automatic scheduling (Phase 2C)
 
+**Phase 3B update:** [Safety and migration preparation](native-safety-migration.md)
+supersedes the earlier open questions below about freshness/quorum, restart
+classification, partial-delivery review and pump ownership. Native remains
+development-only and normal setup remains inactive.
+
 **Development only, inactive by default. The unchanged Blueprint remains the
 only production irrigation executor.** Normal integration setup never constructs,
 initializes or starts `_NativeScheduler`, `_ShotCoordinator` or `PumpController`.

@@ -12,8 +12,9 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .irrigation import Decision, capture_inputs, evaluate
+from .irrigation import Decision, capture_inputs
 from .number import SIGNAL_NUMBER_STATE_UPDATED
+from .pump import PumpState
 from .shot_engine import JOURNAL_TIMEOUT, _ShotCoordinator
 from .switch import SIGNAL_SWITCH_STATE_UPDATED
 
@@ -95,6 +96,9 @@ class _NativeCycleController:
                 if instant.tzinfo is None:
                     raise ValueError("Naive cycle identity")
                 self.record = stored
+                current_cycle = self._decision(dt_util.now()).cycle_id
+                if current_cycle != stored["cycle_id"]:
+                    self.block("missed_sunrise_or_cycle_reset")
                 mismatch = any(
                     self.entry.options.get(key) != stored["values"].get(key)
                     for key in _FLAGS
@@ -110,7 +114,7 @@ class _NativeCycleController:
             raise
 
     def _decision(self, now: datetime) -> Decision:
-        return evaluate(capture_inputs(self.hass, self.entry), now)
+        return self.coordinator.validated_decision(now)
 
     def permits(self, cycle_id: str | None) -> bool:
         """Additional ownership gate, never a replacement for Phase 2A."""
@@ -186,6 +190,12 @@ class _NativeCycleController:
             config = capture_inputs(self.hass, self.entry).config
             if any(config[key] != target["schedule"][key] for key in _SCHEDULE):
                 raise RuntimeError("Schedule changed during transition")
+            if (
+                before.get("p1_done") is not True
+                and target["values"].get("p1_done") is True
+                and not self._completion_safe(current)
+            ):
+                raise RuntimeError("P1 safety changed during completion")
             if capturing and current.vwc_average != target["values"]["p2_ref_vwc"]:
                 raise RuntimeError("VWC changed during reference capture")
             if start == "sensor" and not current.p1_start_eligible:
@@ -349,17 +359,49 @@ class _NativeCycleController:
             start=self.record["schedule"]["p1_mode"],
         )
 
+    def _completion_safe(self, decision: Decision) -> bool:
+        """Wet normal drain retains legacy completion; faults never complete P1."""
+        config = capture_inputs(self.hass, self.entry).config
+        clear = {"off", "dry", "closed", "clear"}
+        normal_drain = clear | {"on", "wet", "open", "problem"}
+        return (
+            self.coordinator.controller.state == PumpState.IDLE
+            and config["pump_state"] == "off"
+            and (
+                not config["drain_sensor_configured"]
+                or config["drain_sensor"] in normal_drain
+            )
+            and (
+                not config["drain_tray_sensor_configured"]
+                or config["drain_tray_sensor"] in clear
+            )
+            and not self.coordinator.sensor_assessment().reasons
+            and not self.coordinator._blocked
+            and not any(
+                reason.startswith("invalid_")
+                or reason in {"vwc_unavailable", "pump_not_off", "pump_unavailable"}
+                or reason.startswith("drain_tray_sensor_")
+                or reason in {"drain_sensor_unavailable", "drain_sensor_invalid"}
+                for reason in decision.blocking_reasons
+            )
+        )
+
     def _completion_due(self, decision: Decision) -> bool:
         return bool(
-            self.entry.options.get("p1_active") is True
+            self._completion_safe(decision)
+            and self.entry.options.get("p1_active") is True
             and decision.phase == "p1_morning"
             and set(decision.blocking_reasons)
             & {"field_capacity_reached", "shot_limit_reached", "drain_sensor_wet"}
         )
 
     async def _complete(self, decision: Decision, *, automatic: bool = False) -> bool:
-        if decision.vwc_average is None or any(
-            reason.startswith("invalid_") for reason in decision.blocking_reasons
+        if (
+            not self._completion_safe(decision)
+            or decision.vwc_average is None
+            or any(
+                reason.startswith("invalid_") for reason in decision.blocking_reasons
+            )
         ):
             return False
         await self._commit(
@@ -372,6 +414,18 @@ class _NativeCycleController:
                     "p2_ref_vwc": decision.vwc_average,
                 },
                 "reference_cycle": decision.cycle_id,
+                "completion_reasons": [
+                    reason
+                    for reason in decision.blocking_reasons
+                    if reason
+                    in {
+                        "field_capacity_reached",
+                        "shot_limit_reached",
+                        "drain_sensor_wet",
+                    }
+                ]
+                if automatic
+                else ["manual_completion"],
             },
             completing=automatic,
         )

@@ -186,14 +186,14 @@ async def test_bursts_and_concurrent_requests_never_queue(
     hass.states.async_set("sensor.vwc", "70")
     await scheduler.async_start()
     await settle(hass)
-    module = "custom_components.growassistant_crop_steering.scheduler.evaluate"
+    original_decision = engine.validated_decision
     evaluations = []
 
-    def spy(inputs, now):
+    def spy(now):
         evaluations.append(now)
-        return evaluate(inputs, now)
+        return original_decision(now)
 
-    monkeypatch.setattr(module, spy)
+    monkeypatch.setattr(engine, "validated_decision", spy)
     for i in range(50):
         hass.states.async_set("sensor.vwc", str(40 + i % 2))
         scheduler.async_request_evaluation()
