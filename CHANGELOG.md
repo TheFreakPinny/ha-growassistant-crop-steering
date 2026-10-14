@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.2.0-beta.1 - Prerelease preparation
+
+- Beta for controlled testing: native PumpController (Phase 1), decision engine
+  (2A), safe single-shot coordinator (2B), event-driven scheduler (2C), native
+  phase/cycle management (3A), safety/sensor/recovery diagnostics (3B), and 12
+  read-only HA diagnostic entities (3C).
+- Blueprint remains the production executor; native execution stays disabled in
+  normal setup, with no automatic migration or pump activation. Existing
+  configuration and entity identifiers are preserved.
+- Synchronized manifest/device version metadata and documented HACS beta selection,
+  complete backups, diagnostic checks and stable rollback. No behavior change in
+  release preparation.
+- Production activation, enforceable pump ownership, independent hardware watchdog
+  and physical off verification remain outstanding. Sensor defaults are provisional;
+  recovery/persistence limits and setup/reload-only journal snapshots still apply.
+- See [prerelease notes](.github/release-notes/v0.2.0-beta.1.md) and
+  [beta testing and rollback](docs/beta-testing.md). No tag or release is published
+  by this preparation.
+
 ## v0.1.16 - 2026-08-28
 
 ### Changed

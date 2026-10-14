@@ -22,7 +22,12 @@ The integration provides Home Assistant entities for P0/P1/P2/P3 crop steering l
 
 ## Current release
 
-**Current version: `v0.1.13`**
+**Prepared beta version: `v0.2.0-beta.1`** (controlled testing only; previous stable: `v0.1.16`).
+
+Native irrigation remains disabled in normal Home Assistant setup. The existing
+Blueprint remains the production irrigation executor. Before testing, make a
+complete Home Assistant backup and read the [beta installation, testing and rollback guide](docs/beta-testing.md).
+Release preparation does not publish this beta; HACS availability requires a separately published prerelease.
 
 The current release includes:
 
