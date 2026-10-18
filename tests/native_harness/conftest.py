@@ -10,6 +10,20 @@ from .harness import NativeHarness, SimulationClock
 
 
 @pytest.fixture
+async def scenario_harness(hass, monkeypatch, enable_custom_integrations):
+    """Same fixed fake hardware; retain every production timeout unchanged."""
+    forbidden_dispatch = AsyncMock(
+        side_effect=AssertionError("Real HA service dispatch forbidden")
+    )
+    monkeypatch.setattr(ServiceRegistry, "async_call", forbidden_dispatch)
+    harness = NativeHarness(hass, monkeypatch, SimulationClock(monkeypatch))
+    await harness.initialize()
+    yield harness
+    await harness.close()
+    forbidden_dispatch.assert_not_awaited()
+
+
+@pytest.fixture
 async def simulation(hass, monkeypatch, enable_custom_integrations):
     forbidden_dispatch = AsyncMock(
         side_effect=AssertionError("Real HA service dispatch forbidden")

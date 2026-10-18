@@ -1,0 +1,38 @@
+{
+  "name": "Normal 18:6 day with P1 capacity and P2 dryback",
+  "start": "2026-10-13T06:00:00+02:00",
+  "timezone": "Europe/Berlin",
+  "sample_seconds": 240,
+  "config": {
+    "p1_mode": "sensor",
+    "p2_mode": "sensor",
+    "p1_start_vwc": 50,
+    "field_capacity_vwc": 60,
+    "p1_shots": 3,
+    "p2_shots": 3,
+    "p1_shot_duration_s": 1,
+    "p2_shot_duration_s": 1,
+    "p3_emergency_shot_duration_s": 1,
+    "p1_soak_min": 1,
+    "p2_soak_min": 1,
+    "p2_vwc_drop": 5,
+    "p2_end_offset_min": 120,
+    "p3_emergency_enabled": true,
+    "p3_emergency_threshold_vwc": 30,
+    "p3_emergency_max_shots": 2
+  },
+  "vwc": {
+    "mode": "scripted",
+    "points": [
+      {"at_seconds": 0, "values": [39, 40, 41]},
+      {"at_seconds": 3602, "values": [59, 60, 61]},
+      {"at_seconds": 7200, "values": [54, 55, 56]},
+      {"at_seconds": 7202, "values": [59, 60, 61]},
+      {"at_seconds": 10800, "values": [54, 55, 56]},
+      {"at_seconds": 10802, "values": [59, 60, 61]},
+      {"at_seconds": 57600, "values": [44, 45, 46]},
+      {"at_seconds": 64800, "values": [39, 40, 41]},
+      {"at_seconds": 82800, "values": [34, 35, 36]}
+    ]
+  }
+}

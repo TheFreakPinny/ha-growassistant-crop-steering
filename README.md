@@ -1381,6 +1381,12 @@ and the [architecture/design review](docs/native-diagnostics-design.md).
 
 ### Native simulation test harness (development only)
 
+The [Crop Steering Scenario Runner](docs/crop-steering-scenarios.md) runs complete
+24-hour scripted or explicitly synthetic test days through the native scheduler,
+with CSV/JSON evidence and standalone HTML charts. Start with
+`python scripts/run-scenario.py tests/native_harness/scenarios/normal-18-6.json --output work/scenario-normal`
+inside the documented test environment. This is test-only fake hardware.
+
 The pytest-only [Native Crop Steering harness](docs/native-test-harness.md)
 composes the existing controllers with three virtual VWC sensors, fixed fake pump
 IO, an injected civil clock and in-memory recovery journals. It exercises P0–P3,

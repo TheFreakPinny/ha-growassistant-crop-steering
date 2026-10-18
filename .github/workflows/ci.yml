@@ -49,15 +49,15 @@ jobs:
 
       - name: Ruff lint
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: python -m ruff check custom_components tests
+        run: python -m ruff check custom_components tests scripts
 
       - name: Ruff formatting
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: python -m ruff format --check custom_components tests
+        run: python -m ruff format --check custom_components tests scripts
 
       - name: Compile Python
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: python -m compileall -q custom_components tests
+        run: python -m compileall -q custom_components tests scripts
 
       - name: Check Git whitespace
         if: ${{ !cancelled() }}
