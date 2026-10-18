@@ -1,0 +1,35 @@
+{
+  "name": "Grodan Hugo 3.19 L - synthetischer 18:6 Testtag",
+  "start": "2026-10-19T06:00:00+02:00",
+  "timezone": "Europe/Berlin",
+  "lighting": {
+    "sunrise": "06:00:00",
+    "sunset": "00:00:00"
+  },
+  "sample_seconds": 60,
+  "config": {
+    "p1_mode": "sensor",
+    "p2_mode": "sensor",
+    "p1_start_vwc": 50,
+    "field_capacity_vwc": 60,
+    "p1_shots": 3,
+    "p1_shot_duration_s": 1,
+    "p1_soak_min": 30,
+    "p2_shots": 3,
+    "p2_shot_duration_s": 1,
+    "p2_soak_min": 30,
+    "p2_vwc_drop": 5,
+    "p2_end_offset_min": 120,
+    "p3_emergency_enabled": true,
+    "p3_emergency_threshold_vwc": 30,
+    "p3_emergency_max_shots": 2,
+    "p3_emergency_shot_duration_s": 1
+  },
+  "vwc": {
+    "mode": "synthetic",
+    "initial": [44, 45, 46],
+    "rise_per_shot": [5, 5, 5],
+    "dryback_per_hour": [0.7, 0.7, 0.7]
+  },
+  "events": []
+}
