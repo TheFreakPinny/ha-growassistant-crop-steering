@@ -2,13 +2,22 @@ name: Crop Steering Simulation
 
 on:
   workflow_dispatch:
+    inputs:
+      scenario:
+        description: Scenario to simulate
+        required: true
+        type: choice
+        default: growassistant_hugo_synthetic_18_6.json
+        options:
+          - growassistant_hugo_synthetic_18_6.json
+          - growassistant_hugo_field_capacity_18_6.json
 
 permissions:
   contents: read
 
 jobs:
   simulate:
-    name: Grodan Hugo synthetic 18:6
+    name: Grodan Hugo simulation
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -37,9 +46,18 @@ jobs:
 
       # The existing pytest harness uses fake hardware and forbids real HA services.
       - name: Run Grodan Hugo scenario
+        env:
+          SCENARIO: ${{ inputs.scenario }}
         run: |
+          case "$SCENARIO" in
+            growassistant_hugo_synthetic_18_6.json|growassistant_hugo_field_capacity_18_6.json) ;;
+            *)
+              echo "Unsupported scenario" >&2
+              exit 1
+              ;;
+          esac
           python scripts/run-scenario.py \
-            tests/native_harness/scenarios/growassistant_hugo_synthetic_18_6.json \
+            "tests/native_harness/scenarios/$SCENARIO" \
             --output work/scenario-hugo
 
       - name: Verify simulation outputs
@@ -51,7 +69,7 @@ jobs:
       - name: Upload simulation results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: scenario-hugo
+          name: scenario-${{ inputs.scenario }}
           path: |
             work/scenario-hugo/report.html
             work/scenario-hugo/timeline.csv
