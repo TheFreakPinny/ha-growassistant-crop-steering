@@ -11,6 +11,7 @@ on:
         options:
           - growassistant_hugo_synthetic_18_6.json
           - growassistant_hugo_field_capacity_18_6.json
+          - growassistant_hugo_field_capacity_boundary_18_6.json
 
 permissions:
   contents: read
@@ -50,7 +51,7 @@ jobs:
           SCENARIO: ${{ inputs.scenario }}
         run: |
           case "$SCENARIO" in
-            growassistant_hugo_synthetic_18_6.json|growassistant_hugo_field_capacity_18_6.json) ;;
+            growassistant_hugo_synthetic_18_6.json|growassistant_hugo_field_capacity_18_6.json|growassistant_hugo_field_capacity_boundary_18_6.json) ;;
             *)
               echo "Unsupported scenario" >&2
               exit 1
