@@ -127,6 +127,9 @@ separate future work.
 
 ## Validation for this change
 
+For the separate review of manual recovery/release boundaries and its additional
+safety tests, see [Native recovery and manual release review](native-recovery-release-review.md).
+
 On the reviewed main baseline with Python 3.13.16 / HA 2025.12.5:
 **807 tests passed** (747 existing tests and 60 new harness scenarios).
 Ruff lint, Ruff formatting, compilation and Git whitespace checks passed.
