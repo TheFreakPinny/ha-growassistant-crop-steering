@@ -19,6 +19,7 @@ on:
           - growassistant_hugo_p3_soak_stress_18_6.json
           - growassistant_hugo_sensor_failure_during_shot_18_6.json
           - growassistant_hugo_pump_off_confirmation_failure_18_6.json
+          - growassistant_hugo_pump_on_failure_18_6.json
 
 permissions:
   contents: read
@@ -58,7 +59,7 @@ jobs:
           SCENARIO: ${{ inputs.scenario }}
         run: |
           case "$SCENARIO" in
-            growassistant_hugo_synthetic_18_6.json|growassistant_hugo_field_capacity_18_6.json|growassistant_hugo_field_capacity_boundary_18_6.json|growassistant_hugo_p2_stress_18_6.json|growassistant_hugo_p2_time_boundary_18_6.json|growassistant_hugo_p2_min_interval_stress_18_6.json|growassistant_hugo_p3_emergency_18_6.json|growassistant_hugo_p3_soak_stress_18_6.json|growassistant_hugo_sensor_failure_during_shot_18_6.json|growassistant_hugo_pump_off_confirmation_failure_18_6.json) ;;
+            growassistant_hugo_synthetic_18_6.json|growassistant_hugo_field_capacity_18_6.json|growassistant_hugo_field_capacity_boundary_18_6.json|growassistant_hugo_p2_stress_18_6.json|growassistant_hugo_p2_time_boundary_18_6.json|growassistant_hugo_p2_min_interval_stress_18_6.json|growassistant_hugo_p3_emergency_18_6.json|growassistant_hugo_p3_soak_stress_18_6.json|growassistant_hugo_sensor_failure_during_shot_18_6.json|growassistant_hugo_pump_off_confirmation_failure_18_6.json|growassistant_hugo_pump_on_failure_18_6.json) ;;
             *)
               echo "Unsupported scenario" >&2
               exit 1
