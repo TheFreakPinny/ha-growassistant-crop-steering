@@ -1,5 +1,9 @@
 # Native recovery evidence, stage one
 
+Stage two's separate internal audit component is documented in
+[Native recovery ledger](native-recovery-ledger.md). It does not change these
+snapshots or grant recovery/activation authority.
+
 This implements only step 1 of section 10 of
 [native-recovery-release-design.md](native-recovery-release-design.md).
 There is no RecoveryCoordinator, acknowledgment, reconciliation write, release
