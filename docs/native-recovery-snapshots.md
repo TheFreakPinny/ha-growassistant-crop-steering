@@ -151,8 +151,8 @@ main after #92 was read through the GitHub connector; only its four changed file
 since the local checkout were synchronized for validation.
 
 Added: **49 pure contract cases and 11 isolated FakePump harness cases**, giving
-an expected **901 tests** from the documented 841 baseline. This is an expected
-count, not a successful full collection/run.
+**901 tests** from the documented 841 baseline. The full GitHub CI run confirmed
+this count after the locally limited checks below.
 
 - Pure contract suite: **49 passed**.
 - Available tests excluding the four HA-fixture directories: **397 passed**
@@ -164,6 +164,16 @@ count, not a successful full collection/run.
 - Ruff lint and format check, Python compilation, Git whitespace: passed.
 
 The reduced run reports the missing timeout-plugin configuration warning and an
-existing HA aiohttp inheritance deprecation. Before merge, CI must run all 901
-expected tests with the documented dependency pins. Event barriers and explicit
+existing HA aiohttp inheritance deprecation. GitHub CI subsequently ran all **901 tests successfully in 113.92 seconds**
+with the documented dependency pins. Event barriers and explicit
 zero timeouts drive the new IO races; no new fixed sleeps were introduced.
+
+
+Full remote validation: [CI run 40467350596](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40467350596),
+job `Python 3.13 checks`, implementation commit
+`416be0a632f5838d0f5f7c70ef220aeceaa66ffc`. This includes all new FakePump cases,
+the full Native-Harness suite and the full pytest suite. Ruff (including scripts),
+formatting, compilation and Git whitespace all passed. HACS and hassfest also
+passed. No implementation changes followed this successful run; the final
+follow-up only records its results. The local dependency/network limitations
+above remain documented for reproducibility.
