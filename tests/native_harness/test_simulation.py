@@ -8,6 +8,10 @@ import pytest
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import ServiceRegistry
 
+from custom_components.growassistant_crop_steering.native_safety import (
+    OwnershipEvidence,
+    migration_eligibility,
+)
 from custom_components.growassistant_crop_steering.pump import (
     HARD_MAX_RUNTIME,
     PumpError,
@@ -42,6 +46,193 @@ async def no_followup(simulation):
     with pytest.raises(ShotRejected):
         await simulation.shots.async_execute("forbidden_followup")
     assert len(simulation.actor.commands) == count
+
+
+async def interrupted_p1(simulation):
+    """Produce real persisted uncertainty through fake IO, never journal edits."""
+    await start_p1(simulation)
+    task = await running(simulation, "interrupted")
+    simulation.vwc(40, "unavailable", 40)
+    result = await task
+    assert result.state == ShotState.INTERRUPTED and not result.accounted
+    assert simulation.records["shots"]["operations"]["interrupted"]["recovery_required"]
+
+
+def assert_recovery_locked(simulation):
+    assessment = simulation.shots.recovery_assessment
+    assert assessment.review_required
+    assert not assessment.native_activation_allowed
+    assert {
+        "interrupted_shot",
+        "possible_partial_delivery",
+        "shot_review_required",
+    } <= set(assessment.reasons)
+    assert not simulation.shots.execution_available
+    assert simulation.shots.delivery_assessment["replacement_blocked"]
+    assert simulation.entry.options["p1_shots_done"] == 0
+
+
+async def assert_no_replay_or_accounting(simulation):
+    before = deepcopy(simulation.records["shots"])
+    commands = list(simulation.actor.commands)
+    for operation, reason in (
+        ("interrupted", "duplicate_operation"),
+        ("replacement", "execution_unavailable"),
+    ):
+        with pytest.raises(ShotRejected, match=reason):
+            await simulation.shots.async_execute(operation)
+    assert simulation.actor.commands == commands
+    assert simulation.records["shots"] == before
+    assert simulation.entry.options["p1_shots_done"] == 0
+    assert simulation.shots.delivery_assessment["reservations"] == 1
+    assert simulation.shots.delivery_assessment["successful_shots"] == 0
+    assert simulation.shots.delivery_assessment["uncertain_attempts"] == 1
+
+
+async def test_interrupted_shot_stays_locked_after_healthy_sensors_and_off(simulation):
+    await interrupted_p1(simulation)
+    assert "sensor_unavailability" in simulation.shots.recovery_assessment.reasons
+    assert_recovery_locked(simulation)
+    simulation.vwc(40, 40, 40)
+    await simulation.hass.async_block_till_done()
+    assert not simulation.shots.sensor_assessment().reasons
+    assert "sensor_unavailability" not in simulation.shots.recovery_assessment.reasons
+    assert_recovery_locked(simulation)
+    before = deepcopy(simulation.records["shots"])
+    assert await simulation.pump.async_stop()
+    assert simulation.pump.state == PumpState.IDLE
+    assert simulation.records["pump"] is None
+    assert simulation.hass.states.get(PUMP).state == "off"
+    assert not simulation.shots.ownership.reasons(PUMP)
+    assert simulation.records["shots"] == before
+    assert_recovery_locked(simulation)
+    await assert_no_replay_or_accounting(simulation)
+
+
+async def test_terminal_interruption_survives_fresh_runtime_and_fake_ownership(
+    simulation, monkeypatch, restarted_hass
+):
+    await interrupted_p1(simulation)
+    saved = simulation.checkpoint()
+    assert saved["records"]["pump"] is None  # Pump reconciliation already finished.
+    await simulation.close()
+    restored = NativeHarness(
+        restarted_hass, monkeypatch, simulation.clock, checkpoint=saved
+    )
+    try:
+        await restored.initialize(fresh=False)
+        assert restored.hass is not simulation.hass
+        assert restored.shots.ownership is None
+        assert restored.pump.ownership is None
+        assert not restored.pump.restart_had_recovery
+        assert restored.cycle.recovery_reason == "cycle_restart_requires_review"
+        assert not restored.cycle.permits(restored.cycle.cycle_id)
+        assert (
+            restored.records["shots"]["operations"]
+            == saved["records"]["shots"]["operations"]
+        )
+        assert_recovery_locked(restored)
+        # Explicit evidence for this fixed fake only: exclude missing ownership
+        # as the sole cause of rejection, without clearing any recovery state.
+        evidence = OwnershipEvidence(PUMP, True, True, True, True)
+        restored.pump.ownership = restored.shots.ownership = evidence
+        assert not restored.shots.sensor_assessment().reasons
+        assert await restored.pump.async_stop()
+        await restored.observe()
+        assert_recovery_locked(restored)
+        await assert_no_replay_or_accounting(restored)
+        assert all(cmd.service == "turn_off" for cmd in restored.actor.commands)
+    finally:
+        await restored.close()
+
+
+async def test_scheduler_stop_start_cannot_acknowledge_interruption(simulation):
+    await simulation.observe()
+    simulation.move_to("2026-10-13T07:00:00+00:00")
+    await simulation.scheduler.async_start()
+    await wait_for(lambda: simulation.shots.state == ShotState.RUNNING)
+    simulation.vwc(40, "unavailable", 40)
+    await wait_for(lambda: simulation.scheduler.retry_blocked)
+    await wait_for(lambda: simulation.scheduler._task.done())
+    before = deepcopy(simulation.records["shots"])
+    simulation.vwc(40, 40, 40)
+    await simulation.scheduler.async_stop()
+    await simulation.scheduler.async_start()
+    simulation.move_to("2026-10-13T08:00:00+00:00")
+    simulation.scheduler.async_request_evaluation()
+    await simulation.hass.async_block_till_done()
+    await wait_for(lambda: simulation.scheduler._task.done())
+    assert simulation.scheduler.retry_blocked
+    assert simulation.records["shots"] == before
+    assert sum(cmd.service == "turn_on" for cmd in simulation.actor.commands) == 1
+    assert_recovery_locked(simulation)
+    await no_followup(simulation)
+
+
+@pytest.mark.parametrize(
+    "missing,expected",
+    [
+        ("off", "pump_off_not_verified"),
+        ("state", "state_not_reconciled"),
+        ("ownership", "pump_ownership_unknown"),
+        ("target", "pump_ownership_target_changed"),
+        ("legacy", "blueprint_ownership_unresolved"),
+        ("writers", "pump_ownership_unverified"),
+        ("production", "production_activation_prohibited"),
+        (None, "shot_review_required"),
+    ],
+)
+async def test_review_checklist_cannot_release_interrupted_shot(
+    simulation, missing, expected
+):
+    await interrupted_p1(simulation)
+    simulation.vwc(40, 40, 40)
+    before = simulation.checkpoint()
+    evidence = OwnershipEvidence(
+        "switch.other" if missing == "target" else PUMP,
+        missing != "legacy",
+        missing != "writers",
+        True,
+        missing != "production",
+    )
+    for rollback in (False, True):
+        review = migration_eligibility(
+            simulation.shots.recovery_assessment,
+            simulation.shots.sensor_assessment(),
+            None if missing == "ownership" else evidence,
+            PUMP,
+            pump_off_verified=missing != "off",
+            state_reconciled=missing != "state",
+            rollback=rollback,
+        )
+        assert expected in review["reasons"]
+        assert not review["review_eligible"]
+        assert not review["native_activation_allowed"]
+    assert simulation.checkpoint() == before
+    assert_recovery_locked(simulation)
+    await assert_no_replay_or_accounting(simulation)
+
+
+async def test_clean_review_eligibility_is_not_native_activation(simulation):
+    # Even an honestly clean fixture and complete simulated checklist cannot
+    # exercise a positive production release: that API does not exist yet.
+    before = simulation.checkpoint()
+    assessment = simulation.shots.recovery_assessment
+    assert not assessment.review_required
+    review = migration_eligibility(
+        assessment,
+        simulation.shots.sensor_assessment(),
+        simulation.shots.ownership,
+        PUMP,
+        pump_off_verified=True,
+        state_reconciled=True,
+    )
+    assert review["review_eligible"]
+    assert review["reasons"] == ()
+    assert not review["native_activation_allowed"]
+    assert not assessment.native_activation_allowed
+    assert simulation.checkpoint() == before
+    assert simulation.actor.commands == []
 
 
 async def test_composition_has_no_real_dispatch_or_disk_io(simulation):
