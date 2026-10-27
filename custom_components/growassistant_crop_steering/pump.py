@@ -24,6 +24,14 @@ from homeassistant.util import dt as dt_util
 from .config import configured_entity_value
 from .const import CONF_PUMP_SWITCH, DOMAIN
 from .native_safety import OwnershipEvidence
+from .recovery_snapshot import (
+    OffEvidence,
+    PumpSafetySnapshot,
+    ResourceBinding,
+    WorkEvidence,
+    freeze,
+    task_state,
+)
 
 HARD_MAX_RUNTIME = 300.0
 SERVICE_TIMEOUT = 5.0
@@ -94,6 +102,62 @@ class PumpController:
         self._timed_out: dict[asyncio.Task[Any], str] = {}
         self._storage_pending: set[asyncio.Task[Any]] = set()
         self._remove_shutdown = None
+        self._safety_tasks: set[asyncio.Task[Any]] = set()
+        self._safety_failures: list[WorkEvidence] = []
+        self._service_evidence: dict[
+            asyncio.Task[Any], tuple[str, str, str | None]
+        ] = {}
+        self._verified_off: tuple[str, Any] | None = None
+
+    def safety_snapshot(self) -> PumpSafetySnapshot:
+        """Copy already available evidence; never dispatch, stop, load or save."""
+        entity = configured_entity_value(self.entry, CONF_PUMP_SWITCH)
+        binding = ResourceBinding(self.entry.entry_id, entity)
+        observed = self.hass.states.get(entity) if self._valid_entity(entity) else None
+        verified = self._verified_off
+        work = (
+            tuple(
+                WorkEvidence(
+                    service,
+                    task_state(task),
+                    target,
+                    operation,
+                    task in self._timed_out,
+                )
+                for task, (service, target, operation) in self._service_evidence.items()
+                if task in self._pending or task in self._timed_out or not task.done()
+            )
+            + tuple(
+                WorkEvidence("storage", task_state(task))
+                for task in self._storage_pending
+            )
+            + tuple(
+                WorkEvidence("pump_work", task_state(task))
+                for task in self._safety_tasks
+            )
+        ) + tuple(self._safety_failures)
+        return PumpSafetySnapshot(
+            binding=binding,
+            captured_at=dt_util.utcnow(),
+            state=self.state.value,
+            record=freeze(self._record),
+            off=OffEvidence(
+                binding,
+                None if observed is None else observed.state,
+                None if observed is None else observed.last_reported,
+                None
+                if observed is None
+                else bool(observed.attributes.get("restored", False)),
+                verified[1] if verified and verified[0] == entity else None,
+                True if verified and verified[0] == entity and not work else None,
+            ),
+            work=work,
+            deadline_pending=self._deadline_handle is not None,
+            stop_requested=self._stop_requested,
+            lock_held=self._lock.locked(),
+            restart_had_recovery=self.restart_had_recovery,
+            reasons=self.recovery_reasons + ((self.fault,) if self.fault else ()),
+        )
 
     @property
     def recovery_record(self) -> dict[str, Any] | None:
@@ -101,7 +165,18 @@ class PumpController:
         return dict(self._record) if isinstance(self._record, dict) else None
 
     def _task(self, work: Awaitable[T]) -> asyncio.Task[T]:
-        return self.hass.async_create_background_task(work, "native pump safety")
+        task = self.hass.async_create_background_task(work, "native pump safety")
+        self._safety_tasks.add(task)
+        task.add_done_callback(self._safety_task_finished)
+        return task
+
+    def _safety_task_finished(self, task: asyncio.Task[Any]) -> None:
+        self._safety_tasks.discard(task)
+        state = task_state(task)
+        if state in {"failed", "cancelled"}:
+            evidence = WorkEvidence("pump_work", state)
+            if evidence not in self._safety_failures:
+                self._safety_failures.append(evidence)
 
     async def async_initialize(self) -> None:
         """Explicitly opt in to recovery only; no integration path calls this yet."""
@@ -276,6 +351,7 @@ class PumpController:
         self._ensure_stop_task()
 
     async def _service(self, entity_id: str, service: str, timeout: float) -> None:
+        self._verified_off = None
         task = self._task(
             self.hass.services.async_call(
                 entity_id.split(".", 1)[0],
@@ -285,6 +361,13 @@ class PumpController:
             )
         )
         self._pending.add(task)
+        self._service_evidence[task] = (
+            service,
+            entity_id,
+            self._record.get("operation_id")
+            if isinstance(self._record, dict)
+            else None,
+        )
         # Do not cancel timed-out HA handlers: cancellation cannot undo delivery.
         task.add_done_callback(self._service_finished)
         done, _ = await asyncio.wait({task}, timeout=timeout)
@@ -292,6 +375,7 @@ class PumpController:
             self._timed_out[task] = self._record["operation_id"]
             raise PumpError(f"Ambiguous {service} timeout")
         self._pending.discard(task)
+        self._service_evidence.pop(task, None)
         if task.cancelled():
             raise PumpError(f"Ambiguous {service} service cancellation")
         task.result()
@@ -361,6 +445,11 @@ class PumpController:
             # Attempt off immediately, but latch ambiguity for this reconciliation.
             # An older call can finish after off; only a later retry may clear it.
             self._pending = {task for task in self._pending if not task.done()}
+            self._service_evidence = {
+                task: evidence
+                for task, evidence in self._service_evidence.items()
+                if task in self._pending or task in self._timed_out
+            }
             earlier_unresolved = bool(self._pending)
             try:
                 await self._service(entity_id, "turn_off", SERVICE_TIMEOUT)
@@ -392,6 +481,7 @@ class PumpController:
             # Only a durable clear releases the gate; failure retains the target.
             await self._write(None)
             self._record = None
+            self._verified_off = (entity_id, observed.last_reported)
             self.state = PumpState.IDLE
             self.fault = None
             self.recovery_reasons = ()

@@ -21,7 +21,8 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, SIGNAL_LAST_SHOT_UPDATED
+from .config import configured_entity_value
+from .const import CONF_PUMP_SWITCH, DOMAIN, SIGNAL_LAST_SHOT_UPDATED
 from .irrigation import Decision, Inputs, capture_inputs, evaluate
 from .native_safety import (
     OwnershipEvidence,
@@ -33,6 +34,13 @@ from .native_safety import (
 )
 from .number import SIGNAL_NUMBER_STATE_UPDATED
 from .pump import HARD_MAX_RUNTIME, PumpController, PumpState, _protected
+from .recovery_snapshot import (
+    ResourceBinding,
+    ShotSafetySnapshot,
+    WorkEvidence,
+    freeze,
+    task_state,
+)
 
 _KEY = f"{DOMAIN}.development_shots"
 SIGNAL_SHOT_FINISHED = f"{DOMAIN}.development_shot_finished"
@@ -152,6 +160,37 @@ class _ShotCoordinator:
         self.sensor_policy = SensorPolicy()
         self.ownership: OwnershipEvidence | None = None
         self._storage_failed = False
+
+    def safety_snapshot(self) -> ShotSafetySnapshot:
+        """Detach journal/options without readiness methods that may mutate gates."""
+        reasons = tuple(
+            reason
+            for reason in (
+                self._reason,
+                "storage_failed" if self._storage_failed else None,
+                "closing" if self._closing else None,
+            )
+            if reason
+        )
+        return ShotSafetySnapshot(
+            binding=ResourceBinding(
+                self.entry.entry_id,
+                configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+            ),
+            captured_at=dt_util.utcnow(),
+            state=self.state.value,
+            journal=freeze(self._journal),
+            options=freeze(self.entry.options),
+            cycle_id=self._cycle_id,
+            work=(
+                WorkEvidence("shot", task_state(self._task)),
+                WorkEvidence("storage", task_state(self._storage_task)),
+            ),
+            accounting_locked=self._accounting_lock.locked(),
+            initialized=self._ready and not self._closing,
+            blocked=self._blocked,
+            reasons=reasons,
+        )
 
     def _background(self, work: Any) -> asyncio.Task[Any]:
         return self.hass.async_create_background_task(work, "development single shot")
