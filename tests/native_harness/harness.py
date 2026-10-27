@@ -132,6 +132,11 @@ class NativeHarness:
         self.actor = FakePump(hass)
         self.records = deepcopy(checkpoint["records"]) if checkpoint else {}
         self.entry = MockConfigEntry(
+            **(
+                {"entry_id": checkpoint["entry_id"]}
+                if checkpoint and "entry_id" in checkpoint
+                else {}
+            ),
             domain=DOMAIN,
             data={
                 "pump_switch": PUMP,
@@ -270,6 +275,7 @@ class NativeHarness:
         """Capture crash-visible data, not the coordinator's mutable live record."""
         return deepcopy(
             {
+                "entry_id": self.entry.entry_id,
                 "records": self.records,
                 "options": dict(self.entry.options),
                 "pump_state": self.hass.states.get(PUMP).state,
