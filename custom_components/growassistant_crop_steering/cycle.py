@@ -11,24 +11,28 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
-from .irrigation import Decision, capture_inputs
+from .config import configured_entity_value
+from .const import CONF_PUMP_SWITCH, DOMAIN
+from .irrigation import Decision, capture_inputs, evaluate
 from .number import SIGNAL_NUMBER_STATE_UPDATED
 from .pump import PumpState
+from .recovery_snapshot import (
+    COUNTER_KEYS as _COUNTERS,
+)
+from .recovery_snapshot import (
+    CYCLE_SCHEDULE_KEYS as _SCHEDULE,
+)
+from .recovery_snapshot import (
+    CycleSafetySnapshot,
+    ResourceBinding,
+    WorkEvidence,
+    freeze,
+    task_state,
+)
 from .shot_engine import JOURNAL_TIMEOUT, _ShotCoordinator
 from .switch import SIGNAL_SWITCH_STATE_UPDATED
 
 _FLAGS = ("p1_active", "p1_done", "p1_window_opened_today", "p2_ref_vwc")
-_COUNTERS = ("p1_shots_done", "p2_shots_done", "p3_emergency_shots_done")
-_SCHEDULE = (
-    "led_sunrise",
-    "led_sunset",
-    "p0_transpiration_min",
-    "p1_duration_min",
-    "p2_end_offset_min",
-    "p1_mode",
-    "p2_mode",
-)
 _CLEAN = {**dict.fromkeys(_FLAGS[:3], False), "p2_ref_vwc": 0}
 
 
@@ -50,6 +54,28 @@ class _NativeCycleController:
         self._closed = False
         self._lock = asyncio.Lock()
         self._write: asyncio.Task[Any] | None = None
+
+    def safety_snapshot(self) -> CycleSafetySnapshot:
+        """Read inputs only; never call permits(), which can latch a block."""
+        now = dt_util.now()
+        inputs = capture_inputs(self.hass, self.entry)
+        decision = evaluate(inputs, now)
+        return CycleSafetySnapshot(
+            binding=ResourceBinding(
+                self.entry.entry_id,
+                configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+            ),
+            captured_at=dt_util.utcnow(),
+            record=freeze(self.record),
+            options=freeze(self.entry.options),
+            schedule=freeze({key: inputs.config[key] for key in _SCHEDULE}),
+            current_cycle_id=decision.cycle_id,
+            current_phase=decision.phase,
+            work=(WorkEvidence("storage", task_state(self._write)),),
+            lock_held=self._lock.locked(),
+            initialized=self._initialized and not self._closed,
+            reasons=(self.recovery_reason,) if self.recovery_reason else (),
+        )
 
     @property
     def cycle_id(self) -> str | None:
