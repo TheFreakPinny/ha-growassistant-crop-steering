@@ -17,6 +17,9 @@ from custom_components.growassistant_crop_steering.recovery_ledger import (
     _RecoveryLedger,
     _RecoverySource,
 )
+from custom_components.growassistant_crop_steering.recovery_plan import (
+    async_create_reconciliation_plan,
+)
 
 from .harness import MemoryStore, NativeHarness
 from .test_simulation import (
@@ -544,6 +547,12 @@ async def test_multiple_real_failure_records_and_cases_never_mask_each_other(
         if separate_cases:
             first_rid = rid
             aggregate["operations"]["second"] = raw
+            unregistered = await async_create_reconciliation_plan(ledger)
+            assert unregistered.status == "blocked"
+            assert any(
+                f.code == "recovery_case_missing" and f.operation_id == "second"
+                for f in unregistered.findings
+            )
             result = await ledger.async_register(
                 request_id="new-failure", expected_revision=1
             )
@@ -569,6 +578,24 @@ async def test_multiple_real_failure_records_and_cases_never_mask_each_other(
                 == "review_required"
             )
         assert ledger.inspect()["effective_state"] == "locked"
+        audit_before = ledger.inspect()
+        journals_before = second.checkpoint()
+        commands_before = list(second.actor.commands)
+        plan = await async_create_reconciliation_plan(ledger)
+        assert plan.status == "blocked" and not plan.native_activation_allowed
+        assert set(plan.recovery_ids) == set(audit_before["cases"])
+        assert set(plan.operation_ids) == {"interrupted", "second"}
+        assert plan.operations["second"]["acknowledged"]
+        if separate_cases:
+            assert any(
+                f.code == "acknowledgment_missing"
+                and f.recovery_id == first_rid
+                and f.operation_id == "interrupted"
+                for f in plan.findings
+            )
+        assert ledger.inspect() == audit_before
+        assert second.checkpoint() == journals_before
+        assert second.actor.commands == commands_before
         assert not second.shots.execution_available
     finally:
         await second.close()
