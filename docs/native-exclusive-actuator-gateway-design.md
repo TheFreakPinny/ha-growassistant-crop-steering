@@ -308,6 +308,37 @@ einen positiven Datenvergleich geschlossen.
 
 ## Validierung
 
-Ergebnisse werden nach Abschluss der lokalen Suite und GitHub-Prüfungen ergänzt.
-Die Vertragstests prüfen Konsistenz und sichere Ablehnung; sie sind keine Tests
-eines realen Gateways, der physischen Exklusivität oder positiver Recovery.
+Umgebung: Python 3.13.16, Home Assistant 2025.12.5, pytest 9.0.0,
+Ruff 0.17.0; Interpreter `/workspace/growassistant-cloud/venv/bin/python`.
+Die fehlenden CI-/Fixture-Abhängigkeiten wurden mit dem vorhandenen uv gemäß
+`.github/requirements-ci.txt` installiert; Fixture 0.13.301 mit `--no-deps`.
+Keine Requirements oder bestehenden Tests wurden verändert. `uv pip check`
+meldet ausschließlich die bekannte Fixture-Metadatenabweichung: erwartetes
+HA 2025.12.4 gegenüber dem bewusst beibehaltenen Repository-Pin 2025.12.5.
+
+Pytest lief sequenziell mit `LITELLM_LOCAL_MODEL_COST_MAP=True` und der für
+diese Cloud-Fixture erforderlichen Ausführungsberechtigung. Der Harness verbietet
+reale HA-Service-Dispatches. Die Vertragstests prüfen Konsistenz und sichere
+Ablehnung; sie sind keine Tests eines realen Gateways, der physischen Exklusivität,
+positiver Recovery oder eines implementierten verteilten Commit-Protokolls.
+
+| Prüfung | Ergebnis |
+| --- | --- |
+| Neue Vertragstests: `pytest -q tests/native_harness/test_actuator_contract.py --tb=short` | **56 bestanden**, 0,86 s |
+| Vollständige Suite: `pytest -q --tb=short` | **1.352 bestanden**, 143,63 s; keine Fehler/Skips |
+| Native-Harness-Anteil der vollständigen Suite | **556 Tests**: 500 Baseline + 56 neue |
+| `ruff check custom_components tests scripts` | Bestanden |
+| `ruff format --check custom_components tests scripts` | Bestanden, 65 Dateien |
+| `compileall -q custom_components tests scripts` | Bestanden |
+| `git diff --cached --check` | Bestanden, einschließlich aller drei neuen Dateien |
+| [HACS](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40942851616) | Bestanden auf Code-Commit `f66d0fb994d21aea050b1e4c444aa402ae1f7b29` |
+| [Hassfest](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40942851700) | Bestanden auf demselben Code-Commit |
+
+Gesamt: **1.296 Baseline + 56 neue Tests = 1.352**. Der erste lokale
+Vertragstest-Aufruf konnte wegen fehlender HA-Fixture noch nicht sammeln; nach
+Installation der gepinnten Abhängigkeiten bestanden gezielte und vollständige
+Suite. Ruff, Formatierung, Kompilierung und Whitespace wurden auf dem finalen
+Code geprüft. Der abschließende Dokumentationscommit ändert nur diese Ergebnisse;
+die unveränderten Repository-Workflows werden auch dafür erneut ausgelöst.
+[PR #101](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/pull/101)
+zielt auf `main` und wird nicht automatisch gemergt.
