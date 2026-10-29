@@ -132,7 +132,7 @@ einen geprüften Cycle-/Accounting-/Baseline-Übergang. Das bestehende technisch
 Protokoll muss diese tatsächlichen Nachweise dann selbst akzeptieren können.
 Ein Fake-Receipt ersetzt keinen dieser Nachweise.
 
-## Validierung
+## Validierung PR #105
 
 Baseline: 1.537 Tests, davon 741 Native-Harness. **66 zusätzliche Tests** mit
 unveränderten echten Plan-Findings und deterministischen Barrieren. Python
@@ -156,3 +156,123 @@ Die Cloud-Testausführung benötigt Loopback-Zugriff für die isolierten HA-Fixt
 Die Persistenztests unterscheiden Schreibfehler vor/nach Speicherung,
 verzögerte Bestätigung, Crash und späte Speicherung nach Abbruch. Ein echter
 HA-Runtime-Neustart übernimmt ausschließlich historische Receipts, keine Sitzung.
+
+## PR #106: Restart-Lebenszyklus und historische Audit-Recovery
+
+Die Erweiterung bleibt vollständig im Native-Harness. `restart()` beendet die
+Adapterinstanz endgültig: neue Instanzepoche, kein Prepare, kein erneuter Versuch.
+Auch ein bereits laufender Collector darf anschließend kein konsistentes Prepare
+veröffentlichen. Ein abgebrochenes Prepare verbraucht den Adapter ebenfalls.
+Eine Ersatzinstanz muss das Journal erneut laden und sämtliche aktuellen
+Nachweise erneut sammeln. Die ressourcenbezogene Serialisierung bleibt bis zum
+Ende eines noch laufenden Storage-Callbacks belegt; ein Restart gibt diesen
+Schreibzugriff nicht vorzeitig frei.
+
+HA-, Gateway-, Koordinator- und Adapterneustarts bleiben getrennte Ereignisse.
+Der HA-Neustart wird mit neuen HA-Fixtures beziehungsweise dem Stop-Fence geprüft;
+der Gateway-Neustart erzeugt einen neuen FakeGateway mit demselben Store.
+Ein neuer Koordinator hat eine neue Boot-ID und wird im Harness als aktueller
+Koordinator der Ressource angebunden. Alte Adapter können dann auch während
+laufender Prüfungen keine aktuelle Konsistenz mehr bestätigen. Der
+Adapterneustart entwertet seine Instanz selbst bei unveränderten Datenwerten.
+Die Tests kombinieren Reihenfolgen, wiederholte Restarts und mehrfache Crashes.
+Diese Harness-Serialisierung ist keine prozessübergreifende Sperre.
+
+### Ausschließlich lesende Wiederherstellung
+
+`inspect_audit_history` prüft das bekannte Schema, vollständige Eintrags- und
+Kontextfelder, Identitäten, Revisionstypen, kanonisch eingebettete JSON-Evidenz,
+Hashkette, Vorgängerbindungen und eindeutige Transaktions-IDs. Wiederholte
+Request-IDs bleiben in ihrer ursprünglichen Reihenfolge sichtbar: sie sind
+Diagnosekorrelation, keine Idempotenzberechtigung für Recovery-Ausführung.
+Unbekannte Schemata, unvollständige Einträge, falsche Typen, doppelte Transaktionen
+und beschädigte Verkettungen werden abgewiesen, auch bei zustimmendem Witness.
+`async_recover_history` liest zusätzlich den getrennt erhaltenen AuditWitness
+und verlangt vollständige Übereinstimmung. Es schreibt keinen Store und
+rekonstruiert weder Prepare noch Commit.
+
+`HistoricalAudit` enthält ausschließlich historische IDs und Feldunterschiede
+zum optional übergebenen Diagnosekontext. Dieser Vergleich macht einen
+übergebenen Kontext selbst nicht frisch: aktuelle Evidenz muss weiterhin über
+den normalen Prepare-Prüfpfad gesammelt werden. Auch bei keinerlei Unterschieden
+bleiben `historical_only=True`, `current_authorization=False`,
+`authenticity_proven=False` und `atomic_multi_store_commit=False`.
+HA-Epochen im Recovery-Scope, Gateway-Boot/Runtime, Ownership, Safety, Journal,
+Witness, Ledger, Teilnehmer, Pumpenressource, Cycle und Operationsumfang bleiben
+an die jeweilige Aufnahme gebunden. Historie kann keine neue Berechtigung liefern.
+
+### Erweiterte Crash-Matrix
+
+| Grenze | Restart-/Crash-Verhalten |
+| --- | --- |
+| Vor Prepare | Pensionierter Adapter weist jeden neuen Versuch ab |
+| Während Prepare | Nach Restart oder Abbruch keine veröffentlichte aktuelle Sitzung |
+| Evidenz geprüft / vor Commit | Prepare gehört nur zur alten Adapterinstanz |
+| Commit-Prüfung / vor Audit-Schreiben | Veränderte Epochen oder Stores verhindern den Receipt |
+| Während Storage vor Persistenz | Abbruch bleibt ungewiss; kein automatischer Retry |
+| Persistenz erfolgt, Bestätigung ausstehend | Alter Callback kann keinen Witness in einem pensionierten Adapter aktualisieren |
+| Nach Audit-Speicherung | Receipt kann persistiert, aktuelle Konsistenz aber bereits falsch sein |
+| Nach bestätigtem Commit | Ausschließlich historische Integrität wiederherstellbar |
+| Verspätete Bestätigung nach Boot/Restart | Keine Wiederaktivierung; nicht bestätigter Witness bleibt konfliktbehaftet |
+| Wiederholte Crashes | Jeder Versuch endet endgültig, keine Bestätigungs- oder Replay-Schleife |
+
+Barrieren und FakeClock steuern alle Nebenläufigkeitsfälle; echte Wartezeiten
+werden nicht zur Synchronisation verwendet. Die vorhandenen Safety-OFF-,
+Lease-, Teilnehmer-, HA- und Gateway-Races bleiben Teil der Prüfung.
+
+### Multi-Store- und Vertrauensgrenzen
+
+Zusätzlich zum Protokolljournal vergleicht der Adapter das persistierte Ledger
+mit dessen geladenem Schema, Binding, Revision und Ereignissen. Ein laufender
+Ledger-Schreibvorgang, ein gesperrtes Ledger oder eine abweichende persistierte
+Projektion verhindert Konsistenz. Die Tests injizieren partielle Ledger-,
+Protokoll- und Audit-Schreibvorgänge in unterschiedlichen Reihenfolgen vor und
+nach Audit-Persistenz. Gateway- und Teilnehmeränderungen werden über die
+bestehenden vollständigen Evidenzvergleiche erfasst.
+
+Es existiert weiterhin **keine gemeinsame atomare Commit-Grenze** zwischen
+Gateway-Journal, Ledger, Recovery-Protokoll, Audit und Teilnehmerrevisionen.
+Ein zurückgelesener Audit-Receipt beweist nur dessen lokale Speicherung.
+Audit-Witness und Audit-Speicherung bleiben zwei getrennte Schritte. Ein Crash
+dazwischen ist konservativ ein Witness-Konflikt, keine nachholbare Freigabe.
+Ein Audit-Rollback gegen einen erhaltenen Witness wird erkannt; Gateway- und
+Ledger-Rollbacks gegen erhaltene aktuelle Evidenz blockieren ebenfalls.
+
+Ein gemeinsamer Rollback von Audit und Witness kann eine formal gültige alte
+Historie ergeben und ist ohne unabhängige Vertrauenswurzel nicht zuverlässig
+nachweisbar. Der entsprechende positive Integritätstest behauptet ausdrücklich
+keine Authentizität oder Rollbackfestigkeit. Verlorene Witness-Evidenz sperrt die
+Wiederherstellungsprüfung vorhandener Receipts. Auch ein gemeinsamer Rollback
+aller Stores und Witnesses kann niemals ON- oder Release-Berechtigung erzeugen:
+alle Sicherheitsflags und Gates bleiben unabhängig davon geschlossen.
+
+Für eine echte zukünftige Recovery-Auflösung sind zusätzlich zu den oben
+aufgeführten physischen und fachlichen Nachweisen eine unabhängige dauerhafte
+Vertrauenswurzel, explizite Crash-/Fencing-Verträge und eine nachweisbare
+Commit-Grenze beziehungsweise ein konservatives Protokoll für Teilpersistenz
+notwendig. Historische Hashketten ersetzen diese Voraussetzungen nicht.
+
+
+### Validierung PR #106
+
+Baseline: **1.603 Tests**, davon **807 Native-Harness**. **99 neue Tests** in
+`test_fake_gateway_restart.py`; insgesamt **1.702 Tests**, davon **906 Native-Harness**.
+Python 3.13.16, HA 2025.12.5, HA-Fixtures 0.13.301 und Ruff 0.17.0.
+
+| Prüfung | Ergebnis |
+| --- | --- |
+| Neue Restart-/Crash-Tests | 99 bestanden (93 plus 6 ergänzende Rollback-/Reihenfolgetests) |
+| Gesamte Native-Harness-Suite | 906 bestanden (209,43 s) |
+| Vollständige pytest-Suite, abschließender Lauf | 1.702 bestanden (268,68 s), keine Fehler/Skips |
+| Ruff | Bestanden |
+| Formatprüfung | Bestanden, 72 Dateien |
+| Python-Kompilierung | Bestanden (`custom_components`, `tests`, `scripts`) |
+| Git-Whitespace-Prüfung | Bestanden, einschließlich neu hinzugefügter Tests |
+| HACS / Hassfest | Bestehende GitHub-Actions-Workflows am PR; Ergebnis wird nachgetragen |
+
+Der erste vollständige Lauf bei paralleler Suite hatte einen bestehenden
+Shot-Engine-Fehler `deadline_exceeded` (1.701 bestanden, ein Fehler in
+`test_delivery_diagnostics_keep_attempts_separate_from_successes`). Der Test
+bestand isoliert; der abschließende vollständige Lauf ohne parallele Tests
+bestand vollständig. Die bestehenden Timeout-Grenzen und die produktive
+Shot-/Pumpenlogik wurden dafür nicht verändert.
