@@ -10,6 +10,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -26,6 +27,14 @@ from .const import CONFIG_ENTRY_KEYS, DOMAIN
 from .cycle import _NativeCycleController
 from .irrigation import Decision
 from .pump import _protected
+from .recovery_participant import (
+    GateRequest,
+    SchedulerGateEvidence,
+    SchedulerObservation,
+    request_current,
+    scheduler_evidence,
+)
+from .recovery_snapshot import task_state
 from .shot_engine import (
     SIGNAL_SHOT_FINISHED,
     ShotRejected,
@@ -111,7 +120,33 @@ class _NativeScheduler:
         self._task: asyncio.Task[bool] | None = None
         self._observed_options: dict[str, Any] | None = None
         self._observed_data: dict[str, Any] | None = None
+        self._recovery_epoch = uuid4().hex
         self._completed_operation: str | None = None
+
+    def recovery_gate_snapshot(self) -> SchedulerObservation:
+        """Local quiesce observation only; never stop, start or clear retry."""
+        return SchedulerObservation(
+            self.coordinator.safety_snapshot().binding,
+            None if self.cycle is None else self.cycle.cycle_id,
+            self._initialized and not self._closed,
+            self.hass.data.get(_KEY, {}).get(self.entry.entry_id) is self,
+            self.running,
+            task_state(self._task),
+            self._timer is not None,
+            self._pending is not None,
+            self._generation,
+            self._timer_revision,
+            self.retry_blocked,
+        )
+
+    def recovery_gate_evidence(self, request: GateRequest) -> SchedulerGateEvidence:
+        """Confirm admission observation while leaving all retry gates intact."""
+        return scheduler_evidence(
+            request,
+            self._recovery_epoch,
+            self.recovery_gate_snapshot(),
+            request_current(self.hass, request),
+        )
 
     @property
     def running(self) -> bool:

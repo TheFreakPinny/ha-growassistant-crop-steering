@@ -24,6 +24,12 @@ from homeassistant.util import dt as dt_util
 from .config import configured_entity_value
 from .const import CONF_PUMP_SWITCH, DOMAIN
 from .native_safety import OwnershipEvidence
+from .recovery_participant import (
+    GateRequest,
+    PumpGateEvidence,
+    pump_evidence,
+    request_current,
+)
 from .recovery_snapshot import (
     OffEvidence,
     PumpSafetySnapshot,
@@ -107,7 +113,24 @@ class PumpController:
         self._service_evidence: dict[
             asyncio.Task[Any], tuple[str, str, str | None]
         ] = {}
+        self._recovery_epoch = uuid4().hex
         self._verified_off: tuple[str, Any] | None = None
+
+    def recovery_gate_evidence(self, request: GateRequest) -> PumpGateEvidence:
+        """Confirm only this owner's observations; never reconcile or stop."""
+        reasons = (
+            ("pump_ownership_unknown",)
+            if self.ownership is None
+            else self.ownership.reasons(request.binding.entity_id)
+        )
+        return pump_evidence(
+            request,
+            self._recovery_epoch,
+            self.safety_snapshot(),
+            self.hass.data.get(_OWNER_KEY) is self,
+            reasons,
+            request_current(self.hass, request),
+        )
 
     def safety_snapshot(self) -> PumpSafetySnapshot:
         """Copy already available evidence; never dispatch, stop, load or save."""

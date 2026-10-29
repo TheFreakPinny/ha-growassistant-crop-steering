@@ -6,6 +6,7 @@ import asyncio
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
@@ -16,6 +17,12 @@ from .const import CONF_PUMP_SWITCH, DOMAIN
 from .irrigation import Decision, capture_inputs, evaluate
 from .number import SIGNAL_NUMBER_STATE_UPDATED
 from .pump import PumpState
+from .recovery_participant import (
+    CycleGateEvidence,
+    GateRequest,
+    cycle_evidence,
+    request_current,
+)
 from .recovery_snapshot import (
     COUNTER_KEYS as _COUNTERS,
 )
@@ -52,8 +59,19 @@ class _NativeCycleController:
         self.recovery_reason: str | None = None
         self._initialized = False
         self._closed = False
+        self._recovery_epoch = uuid4().hex
         self._lock = asyncio.Lock()
         self._write: asyncio.Task[Any] | None = None
+
+    def recovery_gate_evidence(self, request: GateRequest) -> CycleGateEvidence:
+        """Observe reconciliation requirements; do not call mutating permits()."""
+        return cycle_evidence(
+            request,
+            self._recovery_epoch,
+            self.safety_snapshot(),
+            self.coordinator._cycle is self,
+            request_current(self.hass, request),
+        )
 
     def safety_snapshot(self) -> CycleSafetySnapshot:
         """Read inputs only; never call permits(), which can latch a block."""
