@@ -199,7 +199,7 @@ Repository-Pin 2025.12.5. Alle pytest-Läufe erfolgen sequenziell mit
 | --- | --- |
 | Neue Fake-Gateway-Tests | **53 bestanden**, 0,50 s |
 | Vollständige pytest-Suite | **1.405 bestanden**, 130,69 s; keine Fehler/Skips |
-| Native-Harness | Abschließender separater Lauf läuft; vollständige Suite enthält alle **609** Harness-Tests |
+| Native-Harness | **609 bestanden**, 78,48 s; separater abschließender Lauf |
 | Ruff | Bestanden |
 | Formatprüfung | Bestanden, 67 Dateien |
 | Python-Kompilierung | Bestanden |
