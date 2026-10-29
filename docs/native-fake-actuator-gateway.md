@@ -345,3 +345,29 @@ Teilbewässerung erforderlich; siehe [Gateway-Design](native-exclusive-actuator-
 Diese Tests liefern keine positive Recovery-/Cycle-Freigabe. Es bleiben
 `native_activation_allowed=False`, `coordination_ready=False`; kein Scheduler
 startet und es werden keine HA-Services oder echten Pumpenbefehle ausgeführt.
+
+### Validierung PR #103
+
+Baseline nach gemergtem PR #102: **1.406 Tests**, davon **610 Native-Harness**.
+Zusätzlich **60 deterministische Safety-Tests**; Fake-Gateway insgesamt **114**,
+Native-Harness **670**, gesamte Suite **1.466**. Kein bestehender Test und keine
+produktive Datei wurde geändert. Alle Läufe erfolgten sequenziell mit
+`LITELLM_LOCAL_MODEL_COST_MAP=True` und Python 3.13.16 im vorhandenen
+`/workspace/growassistant-cloud/venv`; Dependencies gemäß
+`.github/requirements-ci.txt`, HA-Fixture 0.13.301 mit `--no-deps` wie im CI.
+
+| Prüfung auf finalem Code `d3e38cf5e3e6caf0f4e509d45c8f92930489a6a8` | Ergebnis |
+| --- | --- |
+| Fake-Gateway (`pytest -q tests/native_harness/test_fake_actuator_gateway.py --tb=short`) | **114 bestanden**, einschließlich 60 neuer Tests |
+| Native-Harness (`pytest -q tests/native_harness --tb=short`) | **670 bestanden**, 80,37 s |
+| Vollständige pytest-Suite (`pytest -q --tb=short`) | **1.466 bestanden**, 133,99 s; keine Fehler/Skips |
+| Ruff (`ruff check custom_components tests scripts`) | Bestanden |
+| Format (`ruff format --check custom_components tests scripts`) | Bestanden, 67 Dateien |
+| Kompilierung (`python -m compileall -q custom_components tests scripts`) | Bestanden |
+| Git-Whitespace (`git diff origin/main --check`, zusätzlich staged vor Commit) | Bestanden |
+| [HACS](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40949361705) | Bestanden |
+| [Hassfest](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40949361909) | Bestanden |
+
+Der abschließende Dokumentationscommit ergänzt nur diese Ergebnisse; die
+Repository-Workflows prüfen auch diesen Stand erneut. Der Pull Request zielt
+auf `main`; kein automatisches Mergen oder Aktivieren produktiver Pfade.
