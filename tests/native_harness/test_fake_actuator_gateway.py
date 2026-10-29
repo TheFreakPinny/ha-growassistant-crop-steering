@@ -409,3 +409,283 @@ async def test_late_old_gateway_off_invalidates_new_gateway_pending_on(model):
     assert (await task).status == "rejected"
     assert current.stopped and current.lease is None
     assert "on" not in current.events
+
+
+@pytest.mark.parametrize("cut", ["before_accept", "accepted", "executed", "stopped"])
+@pytest.mark.parametrize("actor_state", ["off", "on", "unknown"])
+async def test_journal_rollback_never_restores_authority(model, cut, actor_state):
+    gateway, clock, store, intent = model
+    snapshot = store.snapshot()
+    if cut != "before_accept":
+        gateway.accept(intent)
+        snapshot = store.snapshot()
+    if cut in {"executed", "stopped"}:
+        await gateway.execute(intent)
+        snapshot = store.snapshot()
+    gateway.safety_off("newer_stop")
+    assert gateway.recheck()
+    gateway.grant("new", BootEpoch("new-ha"), 8)
+    store._actor.state = actor_state  # fixed fake fault injection only
+    store.restore(snapshot)
+    count = gateway.events.count("on")
+    for _ in range(3):
+        restarted = FakeGateway(gateway.actuator, clock, store)
+        assert restarted.state == "off" and restarted.stopped
+        assert not restarted.recheck()
+        with pytest.raises(ValueError):
+            restarted.grant("writer", BootEpoch("ha"), 8)
+        assert (
+            restarted.accept(replace(intent, command_id="fresh")).status == "rejected"
+        )
+        await restarted.execute(intent)
+    assert gateway.events.count("on") == count
+    assert store.witness.blocked
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("boot", 0),
+        ("generation", 0),
+        ("revision", 0),
+        ("schema", 99),
+        ("schema", True),
+        ("records", {"cmd": "corrupt"}),
+        ("records", None),
+        ("records", []),
+    ],
+)
+async def test_corrupt_or_reset_storage_blocks_even_live_lease(model, field, value):
+    gateway, _, store, intent = model
+    gateway.accept(intent)
+    setattr(store, field, value)
+    assert (
+        gateway.accept(replace(intent, command_id="fresh", sequence=2)).status
+        == "rejected"
+    )
+    await gateway.execute(intent)
+    assert gateway.fault and gateway.stopped and gateway.state == "off"
+    assert "on" not in gateway.events
+    assert not gateway.recheck()
+
+
+@pytest.mark.parametrize(
+    "phase", ["boot", "grant", "accept", "execute", "finish", "stop", "recover"]
+)
+@pytest.mark.parametrize("when", ["before", "after", "delay"])
+async def test_commit_uncertainty_survives_reboots_and_late_receipts(
+    model, phase, when
+):
+    gateway, clock, store, intent = model
+    if phase in {"execute", "finish", "recover"}:
+        gateway.accept(intent)
+    if phase == "grant":
+        gateway.revoke()
+        assert gateway.recheck()
+    store.fail = f"{phase}:{when}"
+    if phase in {"boot", "recover"}:
+        FakeGateway(gateway.actuator, clock, store)
+    elif phase == "grant":
+        with pytest.raises(OSError):
+            gateway.grant("other", BootEpoch("ha2"), 8)
+    elif phase == "accept":
+        assert gateway.accept(intent).status == "uncertain"
+    elif phase == "stop":
+        assert gateway.safety_off("emergency")
+    else:
+        assert (await gateway.execute(intent)).status == "uncertain"
+    count = gateway.events.count("on")
+    assert gateway.state == "off"
+    if store.delayed_receipts:
+        assert store.acknowledge()[0] == phase
+    for _ in range(3):
+        current = FakeGateway(gateway.actuator, clock, store)
+        assert current.stopped and not current.recheck()
+        result = current.accept(intent)
+        assert result.status in {"uncertain", "rejected"}
+        assert (await current.execute(intent)).status in {"uncertain", "rejected"}
+        assert current.state == "off"
+    assert gateway.events.count("on") == count
+
+
+@pytest.mark.parametrize("position", ["before_apply", "after_apply"])
+async def test_three_boots_cannot_revive_old_instances_or_overwrite_journal(
+    model, position
+):
+    old, clock, store, intent = model
+    old.accept(intent)
+    barrier = Barrier()
+    task = asyncio.create_task(old.execute(intent, **{position: barrier.wait}))
+    await barrier.entered.wait()
+    instances = [old]
+    for index in range(3):
+        current = FakeGateway(old.actuator, clock, store)
+        instances.append(current)
+        assert current.recheck()
+        lease = current.grant(f"writer-{index}", BootEpoch(f"ha-{index}"), 8)
+        assert lease.lease_id != intent.token.lease_id
+        assert lease.epoch.generation.value > intent.token.epoch.generation.value
+    current.safety_off("stop")
+    snapshot = store.snapshot()
+    barrier.release.set()
+    assert (await task).status == "uncertain"
+    for obsolete in instances[:-1]:
+        assert not obsolete.recheck()
+        with pytest.raises(ValueError):
+            obsolete.grant("old", BootEpoch("old"), 8)
+        assert (
+            obsolete.accept(replace(intent, command_id="old-new")).status == "rejected"
+        )
+        await obsolete.execute(intent)
+    assert store.snapshot() == snapshot
+    assert current.state == "off"
+    assert current.events.count("on") == (position == "after_apply")
+
+
+async def test_crash_after_on_preserves_history_but_current_state_is_off(model):
+    old, clock, store, intent = model
+    old.accept(intent)
+    barrier = Barrier()
+    task = asyncio.create_task(old.execute(intent, after_apply=barrier.wait))
+    await barrier.entered.wait()
+    assert old.state == "on"
+    assert store.records[intent.command_id].status == "executing"
+    current = FakeGateway(old.actuator, clock, store)
+    historical = store.records[intent.command_id]
+    assert historical.status == "uncertain" and historical.observed_state == "unknown"
+    assert current.events == ("off", "on", "off")
+    assert current.off_receipts[-1].result == "software_off"
+    assert current.state == "off" and current.stopped
+    barrier.release.set()
+    assert (await task).status == "uncertain"
+    assert await current.execute(intent) == historical
+    assert current.events.count("on") == 1
+
+
+@pytest.mark.parametrize("position", ["before_apply", "after_apply"])
+@pytest.mark.parametrize("when", ["before", "after", "delay"])
+async def test_off_audit_failure_stops_before_pending_on_can_continue(
+    model, position, when
+):
+    gateway, clock, store, intent = model
+    gateway.accept(intent)
+    barrier = Barrier()
+    task = asyncio.create_task(gateway.execute(intent, **{position: barrier.wait}))
+    await barrier.entered.wait()
+    store.fail = f"stop:{when}"
+    assert gateway.safety_off("urgent")
+    assert gateway.state == "off" and gateway.lease is None and gateway.stopped
+    count = gateway.events.count("on")
+    barrier.release.set()
+    assert (await task).status in {"rejected", "uncertain"}
+    assert gateway.events.count("on") == count
+    for _ in range(3):
+        assert gateway.safety_off("repeat")
+    restarted = FakeGateway(gateway.actuator, clock, store)
+    assert not restarted.recheck()
+    assert gateway.state == "off"
+
+
+@pytest.mark.parametrize("order", [(0, 1), (1, 0)])
+async def test_reordered_storage_proposals_fail_closed(model, order):
+    gateway, clock, store, intent = model
+    gateway.accept(intent)
+    old = store.stage(store.snapshot())
+    newer = store.stage(replace(store.snapshot(), generation=store.generation + 1))
+    proposals = (old, newer)
+    current = FakeGateway(gateway.actuator, clock, store)
+    snapshot = store.snapshot()
+    for index in order:
+        assert not store.deliver(proposals[index])
+    assert store.snapshot() == snapshot
+    assert not current.recheck()
+    assert (await gateway.execute(intent)).status == "uncertain"
+    assert "on" not in gateway.events
+
+
+async def test_missing_independent_witness_blocks_complete_restore(model):
+    gateway, clock, store, intent = model
+    gateway.accept(intent)
+    # Full rollback cannot be detected by another counter from that same copy.
+    store.witness = None
+    restarted = FakeGateway(gateway.actuator, clock, store)
+    assert restarted.stopped and not restarted.recheck()
+    assert restarted.accept(replace(intent, command_id="new")).status == "rejected"
+    await restarted.execute(intent)
+    assert "on" not in gateway.events
+
+
+async def test_simultaneous_lease_requests_have_one_winner(model):
+    gateway, _, store, _ = model
+    gateway.revoke()
+    assert gateway.recheck()
+    generation = store.generation
+
+    async def request(owner):
+        try:
+            return gateway.grant(owner, BootEpoch(owner), 8)
+        except ValueError:
+            return None
+
+    leases = await asyncio.gather(request("a"), request("b"))
+    assert sum(lease is not None for lease in leases) == 1
+    assert store.generation == generation + 1
+    assert gateway.state == "off" and "on" not in gateway.events
+
+
+async def test_fresh_witness_must_not_trust_nonempty_restored_journal(model):
+    gateway, clock, store, intent = model
+    gateway.accept(intent)
+    restored = FakePersistence(
+        boot=store.boot, generation=store.generation, records=dict(store.records)
+    )
+    current = FakeGateway(gateway.actuator, clock, restored)
+    assert not current.recheck() and current.stopped
+    assert current.accept(intent).status == "uncertain"
+    assert (await current.execute(intent)).status == "uncertain"
+    assert "on" not in current.events
+
+
+@pytest.mark.parametrize("when", ["after", "delay"])
+async def test_committed_success_with_lost_receipt_never_becomes_valid_proof(
+    model, when
+):
+    gateway, clock, store, intent = model
+    gateway.accept(intent)
+    store.fail = f"finish:{when}"
+    assert (await gateway.execute(intent)).status == "uncertain"
+    # Raw durable bytes may contain success; API evidence must remain uncertain.
+    assert store.records[intent.command_id].status == "executed"
+    assert gateway.accept(intent).status == "uncertain"
+    if store.delayed_receipts:
+        store.acknowledge()
+    for _ in range(3):
+        current = FakeGateway(gateway.actuator, clock, store)
+        assert current.accept(intent).status == "uncertain"
+        assert (await current.execute(intent)).status == "uncertain"
+        assert not current.recheck()
+    assert gateway.events.count("on") == 1 and gateway.state == "off"
+
+
+@pytest.mark.parametrize("fault", ["rollback", "finish", "stop"])
+async def test_hardening_faults_preserve_recovery_gates_and_accounting(
+    model, simulation, fault
+):
+    gateway, clock, store, intent = model
+    checkpoint = simulation.checkpoint()
+    commands = list(simulation.actor.commands)
+    snapshot = store.snapshot()
+    gateway.accept(intent)
+    if fault == "finish":
+        store.fail = "finish:after"
+    await gateway.execute(intent)
+    if fault == "stop":
+        store.fail = "stop:before"
+    gateway.safety_off("test")
+    if fault == "rollback":
+        store.restore(snapshot)
+    current = FakeGateway(gateway.actuator, clock, store)
+    assert current.stopped and not current.recheck()
+    assert not current.native_activation_allowed and not current.coordination_ready
+    assert simulation.checkpoint() == checkpoint
+    assert simulation.actor.commands == commands

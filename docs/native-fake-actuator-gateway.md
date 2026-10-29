@@ -223,3 +223,125 @@ verspäteter Sicherheits-OFFs nach einem Restart. [PR #102](https://github.com/T
 zielt auf `main` und wird nicht automatisch gemergt. Der abschließende
 Dokumentationscommit ändert keinen Code; die unveränderten PR-Workflows laufen
 auch auf diesem Stand erneut.
+
+## PR #103: Safety Hardening
+
+Dieser Abschnitt verschärft das Modell von PR #102. Insbesondere gilt dessen
+Beschreibung eines nach verlorenem Finish-Receipt gespeicherten Ergebnisses jetzt
+nur für rohe Journalhistorie: Die Gateway-API liefert daraus **keinen gültigen
+Erfolgsnachweis** mehr. Auch ein Neustart hebt Speicherunsicherheit nicht auf.
+Produktive Verträge, Recovery-Gates, Scheduler, Zähler und Accounting bleiben
+unverändert. Es gibt keinen Transportadapter und keine positive Cycle-Freigabe.
+
+### Analyse der tatsächlichen Grenzen
+
+| Grenze | Bisherige Garantie / erkannte Lücke | Gehärtetes Fake-Verhalten |
+| --- | --- | --- |
+| Lease-Erteilung | Synchron, eine Lease je Boot; Commit vor Rückgabe. Lokale Generation kann mit Journal zurückgesetzt werden. | Vollständiger Journalvergleich gegen separaten Modell-Witness vor Erteilung; Fehler vor/nach Commit sperrt auch spätere Boots. |
+| Ownership-Generation | Erhöhung vor Lease-Ausgabe; kein Schutz gegen Kopie alter Zustände. | Restore von Generation, Boot, Revision oder Records wird erkannt, solange der unabhängige Witness erhalten ist. |
+| Annahme/Intent | Persistenter vollständiger Intent; `accepted` bedeutet niemals Ausführung. | Ungewisser Annahme-Commit sperrt ON und bleibt bei Retry ungewiss. |
+| Letztes Fencing | Nach dem letzten `await`, dann kein Yield bis zum synchronen Ausgang. | Zusätzlich Prüfung der Speichervertrauenswürdigkeit; normale Commits sind ausschließlich synchron. |
+| Aktorausführung | Atomarer In-Memory-ON; kein Geräteprotokoll und keine versteckte Queue. | Unverändert. Historische `events` können ON zeigen, obwohl das aktuelle Fake-Feedback OFF ist. |
+| Abschlussreceipt | Crash nach ON lässt `executing`; Finish-Commit kann erfolgt sein, obwohl Antwort verloren ging. | Rückgabe/Retry bleibt `uncertain`, selbst wenn rohe Journalbytes `executed` enthalten. Späte Bestätigung hebt die Sperre nicht auf. |
+| Sicherheits-OFF | Stop-Fence und OFF synchron vor Fortsetzung wartender ON. | Danach separater `stop`-Commit; Auditfehler kann weder OFF noch Stop-Fence zurücknehmen. |
+| Neustart | Laufzeitgeneration sperrt vorherige Instanz schon vor Boot-Commit; Pending wird ungewiss. | Mehrere Boots erhalten Speicherfehler-Latch; alte Instanzen dürfen kein Journal schreiben. |
+| Watchdog | Explizites Polling mit FakeClock; derselbe Eventloop. | Poll prüft zusätzlich Witness/Journal. Kein unabhängiger Timer, kein Schutz bei eingefrorenem Prozess. |
+| Ownership-Wechsel | Entzug/OFF, explizites Recheck, neue Generation. | Alte Lease-/Command-/Boot-IDs und ausstehende Ausführung bleiben gefenced; kein Restore kann die Sperre aufheben. |
+
+Gleichzeitige Lease-Aufrufe werden im einzelnen Eventloop synchron linearisiert:
+Genau einer erhält die Lease. Der Ausführungslock serialisiert normale Commands;
+Sicherheits-OFF nimmt diesen Lock nicht. Ein normaler leasepflichtiger OFF-Command
+bleibt Teil des normalen Kanals; die priorisierte Notabschaltung ist `safety_off()`.
+Ein später OFF einer alten Instanz darf weiterhin abschalten und invalidiert über
+den gemeinsamen Stop-Fence auch einen neuen Writer. Er schreibt keinen alten
+Auditstand in das aktuelle Journal. Ein neuer ON braucht danach ein explizites
+Recheck und eine neue Lease. Es gibt keine automatische Wiederaufnahme.
+
+### Anti-Rollback-Modell und Vertrauensannahme
+
+`JournalSnapshot` enthält Schema, Revision, Boot, Ownership-Generation, Intents,
+Receipts und Stop-Audit. `snapshot()` kopiert diese Daten; `restore()` injiziert
+bewusst eine alte oder widersprüchliche Kopie. Aktor, Laufzeitgeneration,
+Stop-Fence und **FakeWitness** sind ausdrücklich nicht Teil dieser Kopie.
+Der Witness hält den zuletzt vollständig bestätigten beziehungsweise committed
+Journalstand und einen sticky Unsicherheits-Latch. Das Modell vergleicht die
+vollständigen Werte, nicht nur einen lokalen Zähler. Ein Widerspruch sperrt ON;
+ein erkannt unsicherer Restore versucht sofort synchron Fake-OFF.
+
+Dies ist eine **explizite Testannahme**, keine implementierte unabhängige
+Vertrauenswurzel: Der In-Memory-Witness muss getrennt von der Journalkopie erhalten
+bleiben. Auch der Witness selbst ist kein kryptografischer Beleg. Bei Verlust
+oder vollständigem Rollback aller vertrauenswürdigen Zustände kann das Modell
+Authentizität nicht beweisen. Dieser Fall muss durch `witness=None` dargestellt
+werden und bleibt gesperrt. Ein neuer Witness darf ausschließlich eine leere neue
+Testinstallation initialisieren; ein beim Konstruktor übergebener nichtleerer
+Journalstand wird nicht automatisch vertrauenswürdig. Wiederherstellen der
+ursprünglichen Kopie nach erkanntem Rollback beseitigt den Latch ebenfalls nicht.
+Es existiert absichtlich keine Entsperr-API für Speicherunsicherheit.
+
+Ein böswilliger Fixture-Aufrufer kann Python-Objekte einschließlich Witness oder
+Aktor verändern und damit das Modell umgehen. Das ist keine beweisbare
+Rollback-Erkennung. Ein späterer echter Gateway benötigt eine tatsächlich
+unabhängige, authentifizierte und rollbackgeschützte Authority, sichere
+Provisionierung und eine definierte Wiederherstellung bei Verlust dieser Authority.
+Ein weiterer Zähler im selben Backup erfüllt diese Voraussetzung nicht.
+
+### Crash- und Restart-Matrix
+
+| Unterbrechung | Historische Aussage | Weiteres Verhalten |
+| --- | --- | --- |
+| Vor Accept-Commit | Keine bestätigte Annahme oder Ausführung | Speicherfehler sperrt; kein ON. |
+| Nach Accept-Commit, vor Ausführung | Nur Intent vorhanden | Restart markiert Pending ungewiss; niemals Replay. |
+| Nach Executing-Commit, vor ON | Ausführung kann noch nicht stattgefunden haben | Konservativ ungewiss; keine zweite Ausführung. |
+| Unmittelbar nach ON, vor Finish | Fake-Eventhistorie zeigt ON; `executing` beweist allein kein ON | Neustart schaltet Fake-OFF, historisches Receipt wird `uncertain`/`unknown`; aktueller SafetyReceipt zeigt nur `software_off`. |
+| Nach Finish-Commit, Bestätigung verloren/verzögert | Rohe Journalhistorie kann Erfolg enthalten | Witness sperrt, API liefert `uncertain`; auch nach mehreren Boots und spätem ACK kein gültiger Nachweis. |
+| OFF zwischen Intent und Ausgang | Stop-Fence wird synchron erhöht | Wartender ON wird abgelehnt; kein ON nach Stop. |
+| OFF nach ON, vor Receipt | Zwischenzeitlicher ON bleibt historisch möglich | Sofort Fake-OFF; Ergebnis ungewiss, kein Replay. |
+| Lease-Entzug/-Ablauf oder Watchdog am Wartepunkt | Bisheriger Intent verliert Berechtigung | Vor Ausgang kein ON; nach Ausgang OFF und ungewiss. |
+| Boot während laufender Operation | Alte Instanz verliert Laufzeitautorität | Kein Überschreiben des neuen Journals; Sicherheits-OFF bleibt aktorweit möglich. |
+| Fehler beim Stop-Audit | OFF und Fence sind bereits wirksam | Weitere ON-Ausführung gesperrt, auch wenn Audit nicht gespeichert werden konnte. |
+| Restore / beschädigte Daten / unbekanntes Schema | Keine verlässliche aktuelle Autorität | Sticky Sperre, OFF-Versuch, keine Lease. |
+
+Historischer ON und aktuell bestätigter **Fake-OFF** sind getrennte Aussagen.
+Kein Intent, keine Eventliste und kein Receipt bestätigt physische Stromlosigkeit,
+Relaisposition, hydraulischen Durchfluss oder gelieferte Wassermenge. Historische
+Shot-Zähler und Accounting werden weder korrigiert noch durch Ersatzshots ergänzt.
+
+### Fehler-Injektion und Nebenläufigkeitsgrenze
+
+Alle Commit-Phasen (`boot`, `grant`, `accept`, `execute`, `finish`, `recover`,
+`stop`) unterstützen `phase:before`, `phase:after` und `phase:delay`.
+`before` wirft vor Mutation, `after` nach atomarer Mutation; `delay` committed,
+hält die Bestätigung in `delayed_receipts` zurück und meldet dem Gateway ebenfalls
+Unsicherheit. `acknowledge(index)` liefert die historische Bestätigung ohne
+Entsperrung. Selbst die deterministisch bekannte Before-Fehlerklasse wird
+konservativ gesperrt: Das ist keine Behauptung über reales Storage-Verhalten.
+
+`stage(snapshot)` und `deliver(proposal)` erlauben Tests mit verspäteten und
+vertauschten Storage-Vorschlägen. **Bereits das Staging sperrt ON**, weil keine
+synchrone eindeutige Commit-Bestätigung vorliegt. Journal-, Boot-/Laufzeit- und Stop-Fence werden im Vorschlag diagnostisch
+festgehalten; `deliver()` lehnt jeden asynchronen Vorschlag ab, auch einen mit
+passenden Fences. Es wird kein Vorschlag installiert. Damit behauptet das Modell keine funktionierende asynchrone
+Persistenz mit Commit-Reordering. Insbesondere wird kein Callback zurückgehalten,
+der später hinter einer letzten Fencing-Prüfung doch noch einen Ausgang schalten
+könnte. Ein echter asynchroner Store müsste Commit-CAS, Cancel/Drain, dauerhafte
+Deduplizierung und späte Writes unabhängig nachweisen; bis dahin bleibt diese
+Fehlerklasse fail-closed statt optimistisch simuliert.
+
+Beschädigung wird an der typisierten In-Memory-Snapshot-Grenze injiziert;
+es gibt keinen Byte-Parser, keinen Disk-Torn-Write, kein fsync, keinen
+Stromausfalltest und keine Aussage über Storage-Hardware. Split Brain über
+getrennte Aktor-/Witness-Objekte und beliebige Threads sind nicht abgedeckt.
+Die Tests verwenden ausschließlich FakeClock und `asyncio.Event`-Barrieren.
+
+### Voraussetzungen vor späterer Recovery-Anbindung
+
+Es fehlen weiterhin physisches Feedback, exklusive Gerätezugänge, authentifizierte
+Writer, Fencing am tatsächlichen irreversiblen Ausgang, eine unabhängige
+Abschaltkette und Watchdog, rollbackgeschützte Authority sowie crashsichere
+Persistenz-/Transportverträge. Zusätzlich sind vollständige teilnehmereigene
+Recovery-Belege, gemeinsame Admission-Barrieren und die Disposition historischer
+Teilbewässerung erforderlich; siehe [Gateway-Design](native-exclusive-actuator-gateway-design.md).
+Diese Tests liefern keine positive Recovery-/Cycle-Freigabe. Es bleiben
+`native_activation_allowed=False`, `coordination_ready=False`; kein Scheduler
+startet und es werden keine HA-Services oder echten Pumpenbefehle ausgeführt.
