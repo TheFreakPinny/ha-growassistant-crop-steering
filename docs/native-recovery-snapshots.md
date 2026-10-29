@@ -1,5 +1,7 @@
 # Native recovery evidence, stage one
 
+Fortschreibung nach PR #98: [Dauerhafte Teilnehmerrevisionen und Laufzeitepochen](native-recovery-revisions.md). Die dort beschriebenen Revisionsbelege und Schema-2-Laufzeitbindungen ersetzen die unten dokumentierte frühere Revisionslücke; Freigabegrenzen bleiben bestehen.
+
 Stage two's separate internal audit component is documented in
 [Native recovery ledger](native-recovery-ledger.md). It does not change these
 snapshots or grant recovery/activation authority.
