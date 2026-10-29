@@ -34,6 +34,13 @@ from .native_safety import (
 )
 from .number import SIGNAL_NUMBER_STATE_UPDATED
 from .pump import HARD_MAX_RUNTIME, PumpController, PumpState, _protected
+from .recovery_participant import (
+    AccountingGateEvidence,
+    GateRequest,
+    ShotGateEvidence,
+    request_current,
+    shot_evidence,
+)
 from .recovery_snapshot import (
     ResourceBinding,
     ShotSafetySnapshot,
@@ -160,6 +167,21 @@ class _ShotCoordinator:
         self.sensor_policy = SensorPolicy()
         self.ownership: OwnershipEvidence | None = None
         self._storage_failed = False
+        self._recovery_epoch = uuid4().hex
+
+    def recovery_gate_evidence(
+        self,
+        request: GateRequest,
+    ) -> tuple[ShotGateEvidence, AccountingGateEvidence]:
+        """Review operations and accounting without rewriting either history."""
+        return shot_evidence(
+            request,
+            self._recovery_epoch,
+            self.safety_snapshot(),
+            _owners(self.hass).get(self.entry.entry_id) is self,
+            self._ownership_reasons(request.binding.entity_id),
+            request_current(self.hass, request),
+        )
 
     def safety_snapshot(self) -> ShotSafetySnapshot:
         """Detach journal/options without readiness methods that may mutate gates."""
