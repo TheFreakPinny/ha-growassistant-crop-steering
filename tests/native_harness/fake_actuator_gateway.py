@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import math
 from collections.abc import Awaitable, Callable
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
@@ -49,30 +50,159 @@ class Receipt:
     coordination_ready: Literal[False] = field(default=False, init=False)
 
 
+@dataclass(frozen=True)
+class JournalSnapshot:
+    """Only journal data, never the live actor or independent model witness."""
+
+    schema: int
+    revision: int
+    boot: int
+    generation: int
+    records: dict[str, Receipt]
+    stops: tuple[SafetyReceipt, ...]
+
+
+@dataclass
+class FakeWitness:
+    """Test assumption: survives journal restore, NOT a hardware trust root.
+
+    Losing or rolling back this witness together with storage is unprovable.
+    Callers must represent that case with witness=None; ON then stays blocked.
+    """
+
+    expected: JournalSnapshot | None = None
+    blocked: bool = False
+
+
+@dataclass(frozen=True)
+class PendingCommit:
+    expected: JournalSnapshot
+    proposed: JournalSnapshot
+    runtime: int
+    stop_serial: int
+
+
 @dataclass
 class FakePersistence:
-    """Atomic replace journal retained across model boots, not rollback safe storage.
+    """Synchronous atomic journal and separately retained model witness.
 
-    Failure names target before/after atomic commit. Even after-commit failures
-    raise: the caller cannot infer whether the write became durable.
+    :delay commits but loses its acknowledgement until acknowledge() is called.
+    Receipts can arrive in any order; none clear the uncertainty latch.
+    Reorderable storage proposals are deliberately unsupported and fail closed.
     """
 
     _actor: _FakeActuator = field(default_factory=lambda: _FakeActuator(), init=False)
+    witness: FakeWitness | None = field(default_factory=FakeWitness)
     stop_serial: int = 0
     runtime: int = 0
+    schema: int = 1
+    revision: int = 0
     boot: int = 0
     generation: int = 0
     records: dict[str, Receipt] = field(default_factory=dict)
+    stops: tuple[SafetyReceipt, ...] = ()
     fail: str | None = None
+    delayed_receipts: list[tuple[str, int]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.witness is not None and self.witness.expected is None:
+            empty = JournalSnapshot(1, 0, 0, 0, {}, ())
+            if self.snapshot() != empty:
+                # Loading journal data must never silently mint a trust root.
+                self.witness.blocked = True
+            else:
+                self.witness.expected = self.snapshot()
+
+    def snapshot(self) -> JournalSnapshot:
+        return deepcopy(
+            JournalSnapshot(
+                self.schema,
+                self.revision,
+                self.boot,
+                self.generation,
+                self.records,
+                self.stops,
+            )
+        )
+
+    def _install(self, snapshot: JournalSnapshot) -> None:
+        for name in ("schema", "revision", "boot", "generation", "records", "stops"):
+            setattr(self, name, deepcopy(getattr(snapshot, name)))
+
+    def restore(self, snapshot: JournalSnapshot) -> None:
+        """Fault injection: never restore actor, witness, runtime or stop fence."""
+        self._install(snapshot)
+        if not self.check():
+            self.stop_serial += 1
+            self._actor.off()
+
+    def check(self) -> bool:
+        witness = self.witness
+        valid = (
+            witness is not None
+            and not witness.blocked
+            and type(self.schema) is int
+            and self.schema == 1
+            and self.snapshot() == witness.expected
+        )
+        if not valid and witness is not None:
+            self.poison()
+        return valid
+
+    def poison(self) -> None:
+        if self.witness is not None:
+            self.witness.blocked = True
+
+    def lookup(self, command_id: str) -> Receipt | None:
+        if not isinstance(self.records, dict):
+            return None
+        receipt = self.records.get(command_id)
+        if not isinstance(receipt, Receipt):
+            return None
+        if not self.check():
+            return replace(receipt, status="uncertain", reason="storage_untrusted")
+        return receipt
+
+    def stage(self, proposed: JournalSnapshot) -> PendingCommit:
+        """Capture the authority fence for a deterministic storage proposal."""
+        pending = PendingCommit(
+            self.snapshot(), deepcopy(proposed), self.runtime, self.stop_serial
+        )
+        # A queued commit has no synchronous durable acknowledgement. This
+        # model cannot safely continue ON while storage may reorder proposals.
+        self.poison()
+        return pending
+
+    def deliver(self, commit: PendingCommit) -> bool:
+        """Reject every queued proposal: no asynchronous commit protocol exists.
+
+        Even a fabricated proposal with matching diagnostic fences cannot install
+        data or turn a late storage response into fresh ON authority.
+        """
+        self.poison()
+        return False
+
+    def acknowledge(self, index: int = 0) -> tuple[str, int]:
+        """Late acknowledgement is historical evidence only, never an unlock."""
+        return self.delayed_receipts.pop(index)
 
     def write(self, phase: str, mutation: Callable[[], None]) -> None:
-        if self.fail == f"{phase}:before":
+        if not self.check():
+            raise OSError("untrusted or uncertain fake storage")
+        failure = self.fail
+        if failure == f"{phase}:before":
             self.fail = None
+            self.poison()
             raise OSError("fake persistence before commit")
         mutation()
-        if self.fail == f"{phase}:after":
+        self.revision += 1
+        self.witness.expected = self.snapshot()
+        if failure in {f"{phase}:after", f"{phase}:delay"}:
             self.fail = None
-            raise OSError("fake persistence after commit")
+            if failure.endswith(":delay"):
+                self.delayed_receipts.append((phase, self.revision))
+            self.poison()
+            raise OSError("fake persistence acknowledgement unknown")
 
 
 class _FakeActuator:
@@ -186,18 +316,31 @@ class FakeGateway:
         self.stopped = True
         self._lease = None
         confirmed = self._actor.off()
-        self.off_receipts.append(
-            SafetyReceipt(
-                self.boot,
-                reason,
-                "software_off" if confirmed else "unknown",
-                self.clock.tick,
-            )
+        receipt = SafetyReceipt(
+            self.boot,
+            reason,
+            "software_off" if confirmed else "unknown",
+            self.clock.tick,
         )
+        self.off_receipts.append(receipt)
+        # OFF and the actor-wide fence precede every fallible audit operation.
+        # Obsolete instances may stop the actor but must never write its journal.
+        if self._current():
+            try:
+                self.store.write(
+                    "stop",
+                    lambda: setattr(self.store, "stops", self.store.stops + (receipt,)),
+                )
+            except OSError:
+                self.fault = True
         return confirmed
 
     def poll(self) -> None:
         """Explicit deterministic watchdog scheduling; never uses system time."""
+        if not self.store.check():
+            self.fault = True
+            self.safety_off("storage_untrusted")
+            return
         now = self.clock.tick
         if not math.isfinite(now) or now < self._last_tick:
             self.fault = True
@@ -304,7 +447,7 @@ class FakeGateway:
     def accept(self, intent: CommandIntent) -> Receipt:
         """Synchronous atomic admission, independent of execution lock."""
         self.poll()
-        existing = self.store.records.get(intent.command_id)
+        existing = self.store.lookup(intent.command_id)
         if existing is not None:
             if existing.intent != intent:
                 return self._receipt(intent, "rejected", "command_id_conflict")
@@ -334,7 +477,8 @@ class FakeGateway:
     ) -> Receipt:
         """No implicit acceptance or replay. Hooks simulate transport/ack delays."""
         async with self._lock:
-            receipt = self.store.records.get(intent.command_id)
+            self.poll()
+            receipt = self.store.lookup(intent.command_id)
             if receipt is None or receipt.intent != intent:
                 return self._receipt(intent, "rejected", "not_accepted")
             if receipt.status != "accepted":
