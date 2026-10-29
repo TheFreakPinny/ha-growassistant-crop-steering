@@ -184,5 +184,12 @@ Die vollständigen pytest-Läufe erfolgten sequenziell mit
 | Git-Whitespace einschließlich neuer Dateien (`diff --cached --check`) | Bestanden, Exit 0 |
 
 Die neue Anzahl ist **1.261 + 35 = 1.296** bzw. **465 + 35 = 500**.
-HACS und Hassfest werden über die unveränderten Repository-Workflows auf dem
-PR-Branch ausgeführt; Remote-Ergebnisse werden nach Abschluss ergänzt.
+Die unveränderten Repository-Workflows auf Code-Commit
+`6e10f3abe9717faf7c73c7adb7ad009cd420b724` bestätigen zusätzlich:
+
+| Remote-Prüfung | Ergebnis |
+| --- | --- |
+| [HACS](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40939333501) | **Bestanden** |
+| [Hassfest](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40939333624) | **Bestanden** |
+
+Die PR-Workflows prüfen auch die abschließende Dokumentation erneut.
