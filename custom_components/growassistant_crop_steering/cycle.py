@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .config import configured_entity_value
@@ -23,6 +21,7 @@ from .recovery_participant import (
     cycle_evidence,
     request_current,
 )
+from .recovery_revision import JournalRevision, ParticipantRuntime, _ParticipantStore
 from .recovery_snapshot import (
     COUNTER_KEYS as _COUNTERS,
 )
@@ -35,6 +34,7 @@ from .recovery_snapshot import (
     WorkEvidence,
     freeze,
     task_state,
+    version_evidence,
 )
 from .shot_engine import JOURNAL_TIMEOUT, _ShotCoordinator
 from .switch import SIGNAL_SWITCH_STATE_UPDATED
@@ -54,7 +54,9 @@ class _NativeCycleController:
         self.coordinator = coordinator
         self.hass = coordinator.hass
         self.entry = coordinator.entry
-        self.store = Store(self.hass, 1, f"{DOMAIN}.native_cycle.{self.entry.entry_id}")
+        self.store = _ParticipantStore(
+            self.hass, f"{DOMAIN}.native_cycle.{self.entry.entry_id}"
+        )
         self.record: dict[str, Any] | None = None
         self.recovery_reason: str | None = None
         self._initialized = False
@@ -62,6 +64,14 @@ class _NativeCycleController:
         self._recovery_epoch = uuid4().hex
         self._lock = asyncio.Lock()
         self._write: asyncio.Task[Any] | None = None
+        self._runtime = ParticipantRuntime(
+            self.hass, self.entry, coordinator.controller._runtime
+        )
+        self._revision = JournalRevision(
+            self.entry.entry_id,
+            configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+            f"{DOMAIN}.native_cycle.{self.entry.entry_id}",
+        )
 
     def recovery_gate_evidence(self, request: GateRequest) -> CycleGateEvidence:
         """Observe reconciliation requirements; do not call mutating permits()."""
@@ -84,6 +94,15 @@ class _NativeCycleController:
                 configured_entity_value(self.entry, CONF_PUMP_SWITCH),
             ),
             captured_at=dt_util.utcnow(),
+            version=version_evidence(
+                self._revision,
+                self.record,
+                configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+            ),
+            runtime=self._runtime.snapshot(
+                configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+                self._revision.generation,
+            ),
             record=freeze(self.record),
             options=freeze(self.entry.options),
             schedule=freeze({key: inputs.config[key] for key in _SCHEDULE}),
@@ -104,10 +123,12 @@ class _NativeCycleController:
         return None if self.record is None else self.record["phase"]
 
     def block(self, reason: str) -> None:
+        self._runtime.invalidate()
         self.recovery_reason = self.recovery_reason or reason
         self.coordinator._interrupt(reason)
 
     async def async_initialize(self) -> None:
+        self._runtime.start()
         if self._initialized or self._closed or self.coordinator._cycle is not None:
             raise RuntimeError("Cycle controller already owned or closed")
         if not self.coordinator.initialized:
@@ -120,7 +141,7 @@ class _NativeCycleController:
         self.coordinator._cycle = self
         try:
             async with asyncio.timeout(JOURNAL_TIMEOUT):
-                stored = await self.store.async_load()
+                stored = await self._revision.load(self.store)
             if stored is not None:
                 if (
                     not isinstance(stored, dict)
@@ -195,17 +216,18 @@ class _NativeCycleController:
     async def _save(self) -> None:
         if self._write is not None and not self._write.done():
             raise RuntimeError("Native cycle write unresolved")
-        self._write = self.hass.async_create_background_task(
-            self.store.async_save(deepcopy(self.record)),
-            "development cycle persistence",
+        await self._revision.save(
+            self.store,
+            self.record,
+            timeout=JOURNAL_TIMEOUT,
+            create_task=self._revision_task,
         )
-        done, _ = await asyncio.wait({self._write}, timeout=JOURNAL_TIMEOUT)
-        if not done:
-            self._write.add_done_callback(
-                lambda task: task.exception() if not task.cancelled() else None
-            )
-            raise RuntimeError("Native cycle write timed out")
-        self._write.result()
+
+    def _revision_task(self, work):
+        self._write = self.hass.async_create_background_task(
+            work, "development cycle persistence"
+        )
+        return self._write
 
     async def _commit(
         self,
@@ -507,6 +529,7 @@ class _NativeCycleController:
 
     async def async_close(self) -> None:
         self._closed = True
+        self._runtime.close()
         self.block("cycle_stopped_requires_review")
         async with self._lock:
             if self._write is not None and not self._write.done():

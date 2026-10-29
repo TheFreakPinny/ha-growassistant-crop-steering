@@ -51,7 +51,12 @@ async def test_successful_diagnostic_collection_is_not_readiness_or_release(simu
         is coordinator.native_activation_allowed
         is False
     )
-    assert "durable_participant_revisions_unproven" in result.blockers
+    assert "durable_participant_revisions_unproven" not in result.blockers
+    assert all(
+        r.receipt is not None
+        for r in result.request.revisions
+        if r.source in {"pump", "shots", "accounting", "cycle"}
+    )
     assert "external_writers_unproven" in result.blockers
     assert proof(result, SchedulerGateEvidence).quiesce_observed
     assert any(c.passed for c in proof(result, SchedulerGateEvidence).checks)

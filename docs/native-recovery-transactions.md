@@ -1,5 +1,7 @@
 # Native recovery transactions, stage four
 
+Fortschreibung nach PR #98: [Dauerhafte Teilnehmerrevisionen und Laufzeitepochen](native-recovery-revisions.md). Die dort beschriebenen Revisionsbelege und Schema-2-Laufzeitbindungen ersetzen die unten dokumentierte frühere Revisionslücke; Freigabegrenzen bleiben bestehen.
+
 This implements the conservative preparatory protocol allowed by sections 6–8
 and step 4 of [the release design](native-recovery-release-design.md), against
 `main` after merged PR #95 (`a0602cb`). It builds on the

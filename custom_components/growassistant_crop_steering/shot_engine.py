@@ -7,7 +7,6 @@ ownership, active safety policy and the intentionally fail-closed crash journal.
 from __future__ import annotations
 
 import asyncio
-from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from enum import StrEnum
@@ -18,7 +17,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .config import configured_entity_value
@@ -41,12 +39,14 @@ from .recovery_participant import (
     request_current,
     shot_evidence,
 )
+from .recovery_revision import JournalRevision, ParticipantRuntime, _ParticipantStore
 from .recovery_snapshot import (
     ResourceBinding,
     ShotSafetySnapshot,
     WorkEvidence,
     freeze,
     task_state,
+    version_evidence,
 )
 
 _KEY = f"{DOMAIN}.development_shots"
@@ -145,9 +145,7 @@ class _ShotCoordinator:
         self.hass = hass
         self.entry = entry
         self.controller = controller
-        self.store: Store[dict[str, Any]] = Store(
-            hass, 1, f"{DOMAIN}.shot_journal.{entry.entry_id}"
-        )
+        self.store = _ParticipantStore(hass, f"{DOMAIN}.shot_journal.{entry.entry_id}")
         self.state = ShotState.IDLE
         self.snapshot: ShotSnapshot | None = None
         self._journal: dict[str, Any] = {"operations": {}}
@@ -165,9 +163,25 @@ class _ShotCoordinator:
         self._results: dict[str, ShotResult] = {}
         self._cycle: Any = None
         self.sensor_policy = SensorPolicy()
-        self.ownership: OwnershipEvidence | None = None
+        self._ownership: OwnershipEvidence | None = None
         self._storage_failed = False
         self._recovery_epoch = uuid4().hex
+        self._runtime = ParticipantRuntime(self.hass, self.entry, controller._runtime)
+        self._revision = JournalRevision(
+            self.entry.entry_id,
+            configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+            f"{DOMAIN}.shot_journal.{self.entry.entry_id}",
+        )
+
+    @property
+    def ownership(self) -> OwnershipEvidence | None:
+        return self._ownership
+
+    @ownership.setter
+    def ownership(self, evidence: OwnershipEvidence | None) -> None:
+        if evidence is not self._ownership:
+            self._runtime.ownership_changed()
+        self._ownership = evidence
 
     def recovery_gate_evidence(
         self,
@@ -200,6 +214,15 @@ class _ShotCoordinator:
                 configured_entity_value(self.entry, CONF_PUMP_SWITCH),
             ),
             captured_at=dt_util.utcnow(),
+            version=version_evidence(
+                self._revision,
+                self._journal,
+                configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+            ),
+            runtime=self._runtime.snapshot(
+                configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+                self._revision.generation,
+            ),
             state=self.state.value,
             journal=freeze(self._journal),
             options=freeze(self.entry.options),
@@ -341,6 +364,7 @@ class _ShotCoordinator:
 
     async def async_initialize(self) -> None:
         """Load journal; unresolved operations require manual review, never replay."""
+        self._runtime.start()
         if self._ready or self.entry.entry_id in _owners(self.hass):
             raise ShotRejected(("coordinator_already_owned",))
         if self.controller.state != PumpState.IDLE:
@@ -354,7 +378,7 @@ class _ShotCoordinator:
                 self.capture_validated_inputs(), dt_util.now()
             ).cycle_id
             async with asyncio.timeout(JOURNAL_TIMEOUT):
-                journal = await self.store.async_load()
+                journal = await self._revision.load(self.store)
             if journal is not None:
                 if (
                     not isinstance(journal, dict)
@@ -459,16 +483,16 @@ class _ShotCoordinator:
         # Do not cancel disk writes or allow late snapshots to overwrite newer ones.
         if self._storage_task is not None and not self._storage_task.done():
             raise RuntimeError("Previous journal write unresolved")
-        self._storage_task = self._background(
-            self.store.async_save(deepcopy(self._journal))
+        await self._revision.save(
+            self.store,
+            self._journal,
+            timeout=JOURNAL_TIMEOUT,
+            create_task=self._revision_task,
         )
-        done, _ = await asyncio.wait({self._storage_task}, timeout=JOURNAL_TIMEOUT)
-        if not done:
-            self._storage_task.add_done_callback(
-                lambda task: task.exception() if not task.cancelled() else None
-            )
-            raise RuntimeError("Shot journal write timeout")
-        self._storage_task.result()
+
+    def _revision_task(self, work):
+        self._storage_task = self._background(work)
+        return self._storage_task
 
     async def async_execute(self, operation_id: str | None = None) -> ShotResult:
         """One explicit internal request. Concurrent/duplicate calls never queue."""
@@ -565,6 +589,7 @@ class _ShotCoordinator:
 
     @callback
     def _interrupt(self, reason: str) -> None:
+        self._runtime.invalidate()
         if self._task is not None and not self._task.done():
             self._reason = self._reason or reason
             self._abort.set()
@@ -1020,6 +1045,7 @@ class _ShotCoordinator:
     async def async_close(self) -> bool:
         """Block requests immediately and drain execution before controller close."""
         self._closing = True
+        self._runtime.close()
         self._interrupt("integration_stopping")
         return await _protected(self._background(self._close()))
 

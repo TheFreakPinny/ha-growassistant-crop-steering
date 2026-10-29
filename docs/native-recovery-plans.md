@@ -1,5 +1,7 @@
 # Native recovery reconciliation plans, stage three
 
+Fortschreibung nach PR #98: [Dauerhafte Teilnehmerrevisionen und Laufzeitepochen](native-recovery-revisions.md). Die dort beschriebenen Revisionsbelege und Schema-2-Laufzeitbindungen ersetzen die unten dokumentierte frühere Revisionslücke; Freigabegrenzen bleiben bestehen.
+
 This implements section 10, step 3 of
 [native-recovery-release-design.md](native-recovery-release-design.md) on `main`
 after merged PR #94 (`67dddacb815c9d85b8ebd51a61bf462d772cbcba`). PR #94

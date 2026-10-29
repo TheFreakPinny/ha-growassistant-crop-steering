@@ -341,11 +341,13 @@ async def test_reload_during_transition_preserves_pending_intent(
     shot_clock.move_to("2026-10-13T07:00:00+00:00")
     entered, release = asyncio.Event(), asyncio.Event()
     saved = []
+    original_save = cycle.store.async_save
 
     async def delayed(record):
         saved.append(record)
         entered.set()
         await release.wait()
+        await original_save(record)
 
     monkeypatch.setattr(cycle.store, "async_save", delayed)
     observe = asyncio.create_task(cycle.async_observe())
@@ -545,10 +547,12 @@ async def test_readiness_revalidated_after_persistence(
     await begin(cycle)
     shot_clock.move_to("2026-10-13T07:00:00+00:00")
     entered, release = asyncio.Event(), asyncio.Event()
+    original_save = cycle.store.async_save
 
     async def save(record):
         entered.set()
         await release.wait()
+        await original_save(record)
 
     monkeypatch.setattr(cycle.store, "async_save", save)
     task = asyncio.create_task(cycle.async_observe())
@@ -568,10 +572,12 @@ async def test_completion_trigger_revalidated_after_persistence(
     await start(cycle, shot_clock)
     engine.hass.states.async_set("binary_sensor.drain", "on")
     entered, release = asyncio.Event(), asyncio.Event()
+    original_save = cycle.store.async_save
 
     async def save(record):
         entered.set()
         await release.wait()
+        await original_save(record)
 
     monkeypatch.setattr(cycle.store, "async_save", save)
     task = asyncio.create_task(cycle.async_observe())
@@ -643,17 +649,19 @@ async def test_unresolved_storage_timeout_cannot_be_overtaken(
 ):
     entered, release = asyncio.Event(), asyncio.Event()
     saved = []
+    original_save = cycle.store.async_save
 
     async def save(record):
         saved.append(record)
         entered.set()
         await release.wait()
+        await original_save(record)
 
     monkeypatch.setattr(cycle.store, "async_save", save)
     monkeypatch.setattr(
         "custom_components.growassistant_crop_steering.cycle.JOURNAL_TIMEOUT", 0.01
     )
-    with pytest.raises(RuntimeError, match="timed out"):
+    with pytest.raises(RuntimeError, match="journal_write_timeout"):
         await cycle.async_sunrise()
     assert entered.is_set()
     assert not await cycle.async_sunrise()

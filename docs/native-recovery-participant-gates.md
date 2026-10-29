@@ -1,5 +1,7 @@
 # Teilnehmereigene Recovery-Gate-Koordination
 
+Fortschreibung nach PR #98: [Dauerhafte Teilnehmerrevisionen und Laufzeitepochen](native-recovery-revisions.md). Die dort beschriebenen Revisionsbelege und Schema-2-Laufzeitbindungen ersetzen die unten dokumentierte frühere Revisionslücke; Freigabegrenzen bleiben bestehen.
+
 Basis: `main` nach PR #97, `e50e0a128859e415a7d0f5d2f109d87444a1f6d2`.
 Dieser Baustein konkretisiert die Teilnehmergrenze aus
 [native-recovery-release-design.md](native-recovery-release-design.md),

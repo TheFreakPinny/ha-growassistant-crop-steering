@@ -18,7 +18,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, valid_entity_id
 from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .config import configured_entity_value
@@ -30,6 +29,7 @@ from .recovery_participant import (
     pump_evidence,
     request_current,
 )
+from .recovery_revision import JournalRevision, ParticipantRuntime, _ParticipantStore
 from .recovery_snapshot import (
     OffEvidence,
     PumpSafetySnapshot,
@@ -37,6 +37,7 @@ from .recovery_snapshot import (
     WorkEvidence,
     freeze,
     task_state,
+    version_evidence,
 )
 
 HARD_MAX_RUNTIME = 300.0
@@ -89,14 +90,12 @@ class PumpController:
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
-        self.store: Store[dict[str, Any]] = Store(
-            hass, 1, f"{DOMAIN}.pump_recovery.{entry.entry_id}"
-        )
+        self.store = _ParticipantStore(hass, f"{DOMAIN}.pump_recovery.{entry.entry_id}")
         self.state = PumpState.NEW
         self.fault: str | None = None
         self.recovery_reasons: tuple[str, ...] = ()
         self.restart_had_recovery = False
-        self.ownership: OwnershipEvidence | None = None
+        self._ownership: OwnershipEvidence | None = None
         self._record: dict[str, Any] | None = None
         self._lock = asyncio.Lock()
         self._stop_requested = False
@@ -115,6 +114,22 @@ class PumpController:
         ] = {}
         self._recovery_epoch = uuid4().hex
         self._verified_off: tuple[str, Any] | None = None
+        self._runtime = ParticipantRuntime(self.hass, self.entry)
+        self._revision = JournalRevision(
+            self.entry.entry_id,
+            configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+            f"{DOMAIN}.pump_recovery.{self.entry.entry_id}",
+        )
+
+    @property
+    def ownership(self) -> OwnershipEvidence | None:
+        return self._ownership
+
+    @ownership.setter
+    def ownership(self, evidence: OwnershipEvidence | None) -> None:
+        if evidence is not self._ownership:
+            self._runtime.ownership_changed()
+        self._ownership = evidence
 
     def recovery_gate_evidence(self, request: GateRequest) -> PumpGateEvidence:
         """Confirm only this owner's observations; never reconcile or stop."""
@@ -162,6 +177,15 @@ class PumpController:
         return PumpSafetySnapshot(
             binding=binding,
             captured_at=dt_util.utcnow(),
+            version=version_evidence(
+                self._revision,
+                self._record,
+                configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+            ),
+            runtime=self._runtime.snapshot(
+                configured_entity_value(self.entry, CONF_PUMP_SWITCH),
+                self._revision.generation,
+            ),
             state=self.state.value,
             record=freeze(self._record),
             off=OffEvidence(
@@ -203,6 +227,7 @@ class PumpController:
 
     async def async_initialize(self) -> None:
         """Explicitly opt in to recovery only; no integration path calls this yet."""
+        self._runtime.start()
         await _protected(self._task(self._initialize()))
 
     async def _initialize(self) -> None:
@@ -217,7 +242,7 @@ class PumpController:
             )
             try:
                 async with asyncio.timeout(STORAGE_TIMEOUT):
-                    self._record = await self.store.async_load()
+                    self._record = await self._revision.load(self.store)
             except Exception as err:
                 self._set_fault(f"Recovery load failed: {err}", "storage_inconsistency")
                 return
@@ -434,6 +459,7 @@ class PumpController:
             return await self._stop_locked()
 
     def _set_fault(self, reason: str, code: str = "unconfirmed_pump_shutdown") -> None:
+        self._runtime.invalidate()
         self.state = PumpState.FAULT
         self.fault = reason
         self.recovery_reasons = (code,)
@@ -533,18 +559,20 @@ class PumpController:
         }
         if self._storage_pending:
             raise PumpError("Previous recovery write remains unresolved")
-        task = self._task(self.store.async_save(data))
+        await self._revision.save(
+            self.store, data, timeout=STORAGE_TIMEOUT, create_task=self._revision_task
+        )
+        self._storage_pending = {
+            task for task in self._storage_pending if not task.done()
+        }
+
+    def _revision_task(self, work):
+        task = self._task(work)
         self._storage_pending.add(task)
         task.add_done_callback(
             lambda finished: finished.exception() if not finished.cancelled() else None
         )
-        done, _ = await asyncio.wait({task}, timeout=STORAGE_TIMEOUT)
-        if not done:
-            raise PumpError("Recovery write timeout")
-        self._storage_pending.discard(task)
-        if task.cancelled():
-            raise PumpError("Recovery write cancelled")
-        task.result()
+        return task
 
     async def _shutdown(self, event: Any) -> None:
         # The once-listener has already removed itself before invoking us.
@@ -554,6 +582,7 @@ class PumpController:
     async def async_close(self) -> bool:
         """Unload/shutdown hook; block starts immediately and finish shutdown safely."""
         self._closing = True
+        self._runtime.close()
         return await _protected(self._task(self._close()))
 
     async def _close(self) -> bool:

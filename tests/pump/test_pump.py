@@ -326,6 +326,9 @@ async def test_restart_reconciles_recorded_target(hass, controller, hass_storage
     # Restore the pre-crash durable record; no live task from the old process.
     key = f"{DOMAIN}.pump_recovery.{controller.entry.entry_id}"
     hass_storage[key]["data"] = record
+    hass_storage[key].pop(
+        "participant_revision", None
+    )  # Explicit legacy crash fixture.
     hass.states.async_set("switch.pump", "on")
     hass.config_entries.async_update_entry(
         controller.entry, options={CONF_PUMP_SWITCH: "switch.reassigned"}
@@ -344,7 +347,9 @@ async def test_failed_recovery_retains_target(hass, controller, hass_storage):
     await controller.async_activate(1)
     record = controller.recovery_record
     await controller.async_close()
-    hass_storage[f"{DOMAIN}.pump_recovery.{controller.entry.entry_id}"]["data"] = record
+    envelope = hass_storage[f"{DOMAIN}.pump_recovery.{controller.entry.entry_id}"]
+    envelope["data"] = record
+    envelope.pop("participant_revision", None)  # Explicit legacy crash fixture.
     hass.states.async_set("switch.pump", "unavailable")
     hass.services.async_register("switch", "turn_off", AsyncMock())
     replacement = PumpController(hass, controller.entry)

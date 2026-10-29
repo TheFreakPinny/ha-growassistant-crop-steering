@@ -48,7 +48,12 @@ async def test_plan_binds_all_evidence_and_never_mutates(simulation):
     assert plan.cycle_ids == (simulation.cycle.cycle_id,)
     assert plan.binding == ledger.inspect()["cases"][rid]["binding"]
     assert plan.source_revisions["ledger"] == 1
-    assert plan.source_revisions["pump"]["revision"] is None
+    assert (
+        plan.source_revisions["pump"]["revision"]
+        == simulation.pump.safety_snapshot().version.revision
+    )
+    assert plan.source_revisions["pump"]["receipt"]["digest"]
+    assert plan.source_revisions["pump"]["runtime"]
     assert plan.policy_version == "read_only_reconciliation_v1"
     assert plan.schema_version == 1
     assert plan.operations["interrupted"]["recovery_id"] == rid

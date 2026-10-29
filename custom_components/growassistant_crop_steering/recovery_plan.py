@@ -124,6 +124,7 @@ def _runtime(ledger):
             "scheduler": None
             if scheduler is None
             else {
+                "epochs": scheduler.recovery_gate_snapshot().runtime,
                 "running": scheduler.running,
                 "task": task_state(scheduler._task),
                 "generation": scheduler._generation,
@@ -186,7 +187,7 @@ async def async_create_reconciliation_plan(
         revisions = {
             "ledger": projection.revision,
             **{
-                name: participant["version"]
+                name: {**participant["version"], "runtime": participant.get("runtime")}
                 for name, participant in zip(
                     ("pump", "shots", "cycle"), captured["content"], strict=True
                 )
@@ -224,9 +225,13 @@ async def async_create_reconciliation_plan(
                 "sensors_and_drain",
                 "ownership_epoch",
                 "external_writers",
-                "durable_participant_revisions",
             )
         )
+        if any(
+            f["code"] in {"revision_unknown", "revision_conflict", "schema_unknown"}
+            for f in captured["findings"]
+        ):
+            checks.append("durable_participant_revisions")
         for reason in runtime["ownership_reasons"]:
             add(
                 "ownership_conflict",
