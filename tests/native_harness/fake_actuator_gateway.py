@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import Literal
+from uuid import uuid4
 
 from custom_components.growassistant_crop_steering.actuator_contract import (
     ActuatorIdentity,
@@ -26,6 +27,7 @@ from custom_components.growassistant_crop_steering.recovery_revision import (
 @dataclass
 class FakeClock:
     tick: float = 0
+    time_basis: str = field(default_factory=lambda: uuid4().hex, init=False)
 
     def advance(self, duration: float) -> None:
         if not math.isfinite(duration) or duration < 0:
@@ -302,6 +304,16 @@ class FakeGateway:
     @property
     def lease(self) -> OwnershipLease | None:
         return self._lease
+
+    def evidence_snapshot(self):
+        """Atomic event-loop observation; never poll/check/lookup or reconcile.
+
+        Those existing methods can latch faults or issue safety OFF. The isolated
+        reader instead compares journal and witness values without mutating them.
+        """
+        from .fake_gateway_recovery import capture_gateway
+
+        return capture_gateway(self)
 
     def _current(self) -> bool:
         return (
