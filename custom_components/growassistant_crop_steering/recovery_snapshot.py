@@ -11,6 +11,14 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Literal
 
+from .const import DOMAIN
+from .recovery_revision import (
+    JournalReceipt,
+    RuntimeEpochs,
+    decode_receipt,
+    encode_receipt,
+)
+
 
 def freeze(value: object) -> object:
     """Detach journal evidence recursively without duplicating its domain model."""
@@ -43,6 +51,21 @@ class VersionEvidence:
     snapshot_schema: int = 1
     store_schema: int | None = 1
     revision: int | None = None
+    revision_schema: int | None = None
+    receipt: JournalReceipt | None = None
+    status: str = "unknown"
+
+
+def version_evidence(journal, data, entity) -> VersionEvidence:
+    receipt = journal.evidence(data, entity)
+    return VersionEvidence(
+        2,
+        1,
+        None if receipt is None else receipt.revision,
+        1,
+        receipt,
+        "confirmed" if receipt is not None else "unknown",
+    )
 
 
 class TaskState(StrEnum):
@@ -102,6 +125,7 @@ class PumpSafetySnapshot:
     restart_had_recovery: bool
     reasons: tuple[str, ...]
     version: VersionEvidence = field(default_factory=VersionEvidence)
+    runtime: RuntimeEpochs | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "record", freeze(self.record))
@@ -121,6 +145,7 @@ class ShotSafetySnapshot:
     blocked: bool
     reasons: tuple[str, ...]
     version: VersionEvidence = field(default_factory=VersionEvidence)
+    runtime: RuntimeEpochs | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "journal", freeze(self.journal))
@@ -141,6 +166,7 @@ class CycleSafetySnapshot:
     initialized: bool
     reasons: tuple[str, ...]
     version: VersionEvidence = field(default_factory=VersionEvidence)
+    runtime: RuntimeEpochs | None = None
 
     def __post_init__(self) -> None:
         for name in ("record", "options", "schedule"):
@@ -153,6 +179,7 @@ class ReasonCode(StrEnum):
     ACTOR_IDENTITY_UNKNOWN = "actor_identity_unknown"
     SCHEMA_UNKNOWN = "schema_unknown"
     REVISION_UNKNOWN = "revision_unknown"
+    REVISION_CONFLICT = "revision_conflict"
     SNAPSHOT_TIME_INVALID = "snapshot_time_invalid"
     OFF_MISSING = "off_missing"
     OFF_STALE = "off_stale"
@@ -235,12 +262,53 @@ def _common(
     version = snapshot.version
     if (
         type(version.snapshot_schema) is not int
-        or version.snapshot_schema != 1
+        or version.snapshot_schema not in {1, 2}
         or type(version.store_schema) is not int
         or version.store_schema != 1
     ):
         add(ReasonCode.SCHEMA_UNKNOWN, "Unsupported or missing schema", True)
-    if type(version.revision) is not int or version.revision < 0:
+    payload = (
+        snapshot.journal
+        if isinstance(snapshot, ShotSafetySnapshot)
+        else snapshot.record
+    )
+    receipt = version.receipt
+    try:
+        suffix = (
+            "shot_journal"
+            if isinstance(snapshot, ShotSafetySnapshot)
+            else (
+                "pump_recovery"
+                if isinstance(snapshot, PumpSafetySnapshot)
+                else "native_cycle"
+            )
+        )
+        receipt_valid = (
+            isinstance(receipt, JournalReceipt)
+            and decode_receipt(
+                encode_receipt(receipt),
+                payload,
+                binding.entry_id,
+                binding.entity_id,
+                f"{DOMAIN}.{suffix}.{binding.entry_id}",
+            )
+            == receipt
+        )
+    except (TypeError, ValueError, RuntimeError, AttributeError):
+        receipt_valid = False
+    # Schema 1 remains a historical diagnostic, never newly certified evidence.
+    if (
+        version.snapshot_schema != 2
+        or type(version.revision_schema) is not int
+        or version.revision_schema != 1
+        or version.status != "confirmed"
+        or not receipt_valid
+        or type(version.revision) is not int
+        or version.revision < 1
+        or receipt.revision != version.revision
+        or receipt.identity.entry_id != binding.entry_id
+        or receipt.identity.pump_entity != binding.entity_id
+    ):
         add(ReasonCode.REVISION_UNKNOWN, "No durable participant revision", True)
     if (
         not _aware(now)

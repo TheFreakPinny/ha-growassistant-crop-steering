@@ -24,7 +24,6 @@ from custom_components.growassistant_crop_steering.recovery_snapshot import (
 
 NOW = datetime(2026, 10, 13, 7, tzinfo=UTC)
 BINDING = ResourceBinding("entry", "switch.fake", "registry", "device")
-VERSION = VersionEvidence(revision=1)
 COUNTERS = dict(p1_shots_done=0, p2_shots_done=0, p3_emergency_shots_done=0)
 VALUES = dict(
     p1_active=False, p1_done=False, p1_window_opened_today=False, p2_ref_vwc=0
@@ -42,6 +41,27 @@ SCHEDULE = {
 }
 
 
+def version(data, suffix):
+    # Pure validator model: a well-formed receipt is not live issuance or a gate.
+    from custom_components.growassistant_crop_steering.const import DOMAIN
+    from custom_components.growassistant_crop_steering.recovery_revision import (
+        JournalIdentity,
+        JournalReceipt,
+        content_digest,
+    )
+
+    try:
+        digest = content_digest(data)
+    except (TypeError, ValueError):
+        return VersionEvidence(snapshot_schema=2)
+    receipt = JournalReceipt(
+        JournalIdentity("entry", "switch.fake", f"{DOMAIN}.{suffix}.entry", "1" * 32),
+        1,
+        digest,
+    )
+    return VersionEvidence(2, 1, 1, 1, receipt, "confirmed")
+
+
 def pump():
     # Synthetic evidence contract; production snapshots cannot assert physical OFF.
     return PumpSafetySnapshot(
@@ -56,7 +76,7 @@ def pump():
         False,
         False,
         (),
-        VERSION,
+        version(None, "pump_recovery"),
     )
 
 
@@ -73,7 +93,7 @@ def shots(journal=None):
         True,
         False,
         (),
-        VERSION,
+        version(journal if journal is not None else {"operations": {}}, "shot_journal"),
     )
 
 
@@ -100,7 +120,7 @@ def cycle(**updates):
         False,
         True,
         (),
-        VERSION,
+        version(record, "native_cycle"),
     )
 
 
@@ -182,7 +202,7 @@ def test_late_completion_is_not_a_clearance():
     "version,reason",
     [
         (VersionEvidence(store_schema=None, revision=1), ReasonCode.SCHEMA_UNKNOWN),
-        (VersionEvidence(snapshot_schema=2, revision=1), ReasonCode.SCHEMA_UNKNOWN),
+        (VersionEvidence(snapshot_schema=99, revision=1), ReasonCode.SCHEMA_UNKNOWN),
         (VersionEvidence(), ReasonCode.REVISION_UNKNOWN),
         (VersionEvidence(revision=True), ReasonCode.REVISION_UNKNOWN),
     ],

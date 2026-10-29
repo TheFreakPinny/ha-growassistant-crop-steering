@@ -22,7 +22,8 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .recovery_snapshot import freeze, validate_safety
+from .recovery_revision import LEGACY_METADATA, decode_receipt
+from .recovery_snapshot import Finding, ReasonCode, freeze, validate_safety
 
 SCHEMA_VERSION = 1
 _KEY = f"{DOMAIN}.development_recovery_ledgers"
@@ -212,7 +213,7 @@ class _RecoverySource:
         for snapshot in snapshots:
             _require(snapshot.binding == self.binding, "binding_mismatch")
             _require(
-                snapshot.version.snapshot_schema == 1
+                snapshot.version.snapshot_schema in {1, 2}
                 and snapshot.version.store_schema == 1,
                 "evidence_schema_unknown",
             )
@@ -242,6 +243,56 @@ class _RecoverySource:
             == _json(saved),
             "evidence_not_durable",
         )
+        # Compare the revision in the very same journal envelope, independently
+        # of its payload. A matching end value alone cannot hide journal ABA.
+        revision_findings = []
+        for store, snapshot, payload in zip(
+            (self.pump.store, self.shots.store, self.cycle.store),
+            snapshots,
+            saved,
+            strict=True,
+        ):
+            if hasattr(store, "async_read_versioned"):
+                data, metadata = await store.async_read_versioned()
+                _require(data == payload, "evidence_changed")
+                if metadata is not None and metadata != LEGACY_METADATA:
+                    try:
+                        receipt = decode_receipt(
+                            metadata,
+                            data,
+                            self.binding.entry_id,
+                            self.binding.entity_id,
+                            snapshot.version.receipt.identity.store_key
+                            if snapshot.version.receipt is not None
+                            else "unknown",
+                        )
+                    except (ValueError, RuntimeError):
+                        receipt = None
+                    if receipt is None or receipt != snapshot.version.receipt:
+                        revision_findings.append(
+                            Finding(
+                                ReasonCode.REVISION_CONFLICT,
+                                "participants",
+                                "Stored revision metadata does not validate against live evidence",
+                            )
+                        )
+                else:
+                    if snapshot.version.receipt is not None:
+                        revision_findings.append(
+                            Finding(
+                                ReasonCode.REVISION_CONFLICT,
+                                "participants",
+                                "Stored revision metadata is missing",
+                            )
+                        )
+            elif snapshot.version.receipt is not None:
+                revision_findings.append(
+                    Finding(
+                        ReasonCode.REVISION_CONFLICT,
+                        "participants",
+                        "Store adapter cannot provide revision metadata",
+                    )
+                )
         evidence = self._content(snapshots)
         _require(evidence == self._content(self._snapshots()), "evidence_changed")
         self._validate_content(evidence)
@@ -251,7 +302,7 @@ class _RecoverySource:
         return {
             "content": evidence,
             "digest": _digest(evidence),
-            "findings": _json(result.findings),
+            "findings": _json((*result.findings, *revision_findings)),
         }
 
     @staticmethod
@@ -268,7 +319,7 @@ class _RecoverySource:
             version = participant.get("version", {})
             _require(
                 type(version.get("snapshot_schema")) is int
-                and version["snapshot_schema"] == 1
+                and version["snapshot_schema"] in {1, 2}
                 and type(version.get("store_schema")) is int
                 and version["store_schema"] == 1,
                 "evidence_schema_unknown",

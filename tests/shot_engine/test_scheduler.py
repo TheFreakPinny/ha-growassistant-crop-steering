@@ -421,6 +421,7 @@ async def test_restart_never_replays_interrupted_journal(
     journal_key = f"growassistant_crop_steering.shot_journal.{engine.entry.entry_id}"
     record = next(iter(hass_storage[journal_key]["data"]["operations"].values()))
     record["state"] = "running"
+    hass_storage[journal_key].pop("participant_revision", None)  # Legacy crash fixture.
     from custom_components.growassistant_crop_steering.pump import PumpController
 
     pump = PumpController(hass, engine.entry)

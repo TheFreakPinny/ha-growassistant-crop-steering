@@ -25,6 +25,9 @@ from custom_components.growassistant_crop_steering.native_safety import (
     OwnershipEvidence,
 )
 from custom_components.growassistant_crop_steering.pump import PumpController
+from custom_components.growassistant_crop_steering.recovery_revision import (
+    LEGACY_METADATA,
+)
 from custom_components.growassistant_crop_steering.scheduler import _NativeScheduler
 from custom_components.growassistant_crop_steering.shot_engine import _ShotCoordinator
 
@@ -45,10 +48,34 @@ class MemoryStore:
         self.key = key
 
     async def async_load(self):
+        self.loaded_revision = deepcopy(
+            self.records.get("_participant_envelopes", {}).get(self.key)
+            or (LEGACY_METADATA if self.key in self.records else None)
+        )
         return deepcopy(self.records.get(self.key))
 
     async def async_save(self, data):
         self.records[self.key] = deepcopy(data)
+        if hasattr(self, "_revision_candidate"):
+            self.records.setdefault("_participant_envelopes", {})[self.key] = deepcopy(
+                self._revision_candidate
+            )
+            self._revision_completed = True
+
+    async def async_read_versioned(self):
+        return (
+            await self.async_load(),
+            deepcopy(
+                self.records.get("_participant_envelopes", {}).get(self.key)
+                or (LEGACY_METADATA if self.key in self.records else None)
+            ),
+        )
+
+    async def async_save_versioned(self, data, metadata):
+        self._revision_candidate, self._revision_completed = deepcopy(metadata), False
+        await self.async_save(data)
+        if not self._revision_completed:
+            raise RuntimeError("Memory journal write completion unknown")
 
 
 @dataclass(frozen=True)

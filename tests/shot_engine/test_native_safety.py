@@ -578,6 +578,7 @@ async def test_missing_success_checkpoint_is_not_a_clean_restart(engine, hass_st
     await engine.async_close()
     key = f"{DOMAIN}.shot_journal.{engine.entry.entry_id}"
     del hass_storage[key]["data"]["last_accounting"]
+    hass_storage[key].pop("participant_revision", None)  # Explicit legacy fixture.
     restored = await restore(engine)
     assert restored._blocked
     assert "incomplete_accounting" in restored.recovery_assessment.reasons

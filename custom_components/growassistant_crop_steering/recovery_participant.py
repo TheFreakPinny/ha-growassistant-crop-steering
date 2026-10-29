@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Literal
 from uuid import uuid4
@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN
 from .recovery_ledger import LedgerError, _digest, _json
 from .recovery_plan import async_create_reconciliation_plan
+from .recovery_revision import BootEpoch, JournalReceipt, RuntimeEpochs
 from .recovery_snapshot import (
     CycleSafetySnapshot,
     PumpSafetySnapshot,
@@ -35,6 +36,9 @@ class EvidenceRevision:
     source: str
     digest: str
     durable_revision: int | None
+    receipt: JournalReceipt | None = None
+    runtime: RuntimeEpochs | None = None
+    volatile_generation: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,8 @@ class GateRequest:
     runtime_epoch: str
     safety_generation: int
     captured_at: datetime
+    boot_epoch: BootEpoch | None = None
+    schema_version: int = 2
 
 
 @dataclass(frozen=True)
@@ -90,6 +96,8 @@ class ParticipantEvidence:
     blockers: tuple[str, ...]
     checks: tuple[GateCheck, ...]
     native_activation_allowed: Literal[False] = field(default=False, init=False)
+    runtime: RuntimeEpochs | None = field(default=None, kw_only=True)
+    revision: EvidenceRevision | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -155,7 +163,7 @@ def _base(request, epoch, gate, snapshot, owned, findings, runtime_current):
     blockers = [f.code.value for f in findings]
     if snapshot.binding != request.binding:
         blockers.append("binding_mismatch")
-    if revision is None or revision.digest != digest:
+    if revision != evidence_revision(gate, snapshot):
         blockers.append("revision_conflict")
     if not owned:
         blockers.append("ownership_lost")
@@ -168,8 +176,13 @@ def _base(request, epoch, gate, snapshot, owned, findings, runtime_current):
         GateCheck("local_owner", owned, "Current component registration"),
         GateCheck(
             "durable_revision",
-            snapshot.version.revision is not None,
-            "Content digests do not supply monotone durable revisions",
+            snapshot.version.receipt is not None
+            and not any(
+                f.code.value
+                in {"revision_unknown", "revision_conflict", "schema_unknown"}
+                for f in findings
+            ),
+            "Completed local atomic journal write; no external writer isolation",
         ),
     )
     return dict(
@@ -179,6 +192,8 @@ def _base(request, epoch, gate, snapshot, owned, findings, runtime_current):
         historical_errors=tuple(snapshot.reasons),
         blockers=tuple(dict.fromkeys(blockers)),
         checks=checks,
+        runtime=snapshot.runtime,
+        revision=evidence_revision(gate, snapshot),
     )
 
 
@@ -323,6 +338,48 @@ class SchedulerObservation:
     generation: int
     timer_revision: int
     retry_blocked: bool
+    runtime: RuntimeEpochs | None = None
+    schema_version: int = 2
+
+
+def evidence_revision(gate, snapshot):
+    if isinstance(snapshot, SchedulerObservation):
+        return EvidenceRevision(
+            gate,
+            observation_digest(snapshot),
+            None,
+            runtime=snapshot.runtime,
+            volatile_generation=(snapshot.generation, snapshot.timer_revision),
+        )
+    return EvidenceRevision(
+        gate,
+        observation_digest(snapshot),
+        snapshot.version.revision,
+        snapshot.version.receipt,
+        snapshot.runtime,
+    )
+
+
+def _revision_shape(revision, binding):
+    """Do not let Python's bool/int equality certify a malformed revision."""
+    if not isinstance(revision, EvidenceRevision):
+        return False
+    if revision.source == "scheduler":
+        return revision.durable_revision is None and revision.receipt is None
+    if revision.source == "ledger":
+        return type(revision.durable_revision) is int and revision.durable_revision >= 0
+    if revision.durable_revision is None:
+        return revision.receipt is None
+    receipt = revision.receipt
+    return (
+        type(revision.durable_revision) is int
+        and revision.durable_revision >= 1
+        and isinstance(receipt, JournalReceipt)
+        and type(receipt.revision) is int
+        and receipt.revision == revision.durable_revision
+        and receipt.identity.entry_id == binding.entry_id
+        and receipt.identity.pump_entity == binding.entity_id
+    )
 
 
 def scheduler_evidence(
@@ -350,7 +407,7 @@ def scheduler_evidence(
         blockers.append("cycle_mismatch")
     revision = next((r for r in request.revisions if r.source == "scheduler"), None)
     digest = observation_digest(snapshot)
-    if revision is None or revision.digest != digest:
+    if revision != evidence_revision("scheduler", snapshot):
         blockers.append("revision_conflict")
     return SchedulerGateEvidence(
         request,
@@ -362,6 +419,8 @@ def scheduler_evidence(
         snapshot.generation,
         snapshot.retry_blocked,
         idle,
+        runtime=snapshot.runtime,
+        revision=evidence_revision("scheduler", snapshot),
     )
 
 
@@ -393,6 +452,16 @@ def aggregate_evidence(
     revision_sources = tuple(r.source for r in request.revisions)
     if set(revision_sources) != set((*GATES, "ledger")) or len(revision_sources) != 6:
         reasons.append("revision_conflict")
+    if any(not _revision_shape(r, request.binding) for r in request.revisions):
+        reasons.append("revision_conflict")
+    shots_revision = next((r for r in request.revisions if r.source == "shots"), None)
+    accounting_revision = next(
+        (r for r in request.revisions if r.source == "accounting"), None
+    )
+    if shots_revision is not None and accounting_revision != replace(
+        shots_revision, source="accounting"
+    ):
+        reasons.append("revision_conflict")
     for proof in evidence:
         if type(proof) not in _TYPES:
             reasons.append("participant_invalid")
@@ -402,8 +471,21 @@ def aggregate_evidence(
             reasons.append("confirmation_binding_conflict")
         gate = GATES[_TYPES.index(type(proof))]
         revision = next((r for r in request.revisions if r.source == gate), None)
-        if revision is None or revision.digest != proof.observed_digest:
+        if (
+            revision is None
+            or revision.digest != proof.observed_digest
+            or revision != proof.revision
+            or proof.runtime != revision.runtime
+        ):
             reasons.append("revision_conflict")
+        if (
+            proof.runtime is None
+            or request.boot_epoch != proof.runtime.boot
+            or request.schema_version != 2
+            or proof.runtime.resource.entry_id != request.binding.entry_id
+            or proof.runtime.resource.entity_id != request.binding.entity_id
+        ):
+            reasons.append("runtime_epoch_conflict")
         if isinstance(proof, ShotGateEvidence):
             expected_scope = {(o.operation_id, o.cycle_id) for o in request.operations}
             actual_scope = {(o.operation_id, o.cycle_id) for o in proof.dispositions}
@@ -415,10 +497,30 @@ def aggregate_evidence(
             reasons.append("confirmation_invalid")
         reasons.extend(proof.blockers)
         reasons.extend(c.code for c in proof.checks if c.passed is not True)
-    # Current controllers cannot attest these. No override or positive issuer.
+    durable_complete = all(
+        len(matches := [p for p in evidence if type(p) is kind]) == 1
+        and (revision := next((r for r in request.revisions if r.source == gate), None))
+        is not None
+        and _revision_shape(revision, request.binding)
+        and revision.receipt is not None
+        and matches[0].revision == revision
+        and any(
+            c.code == "durable_revision" and c.passed is True for c in matches[0].checks
+        )
+        for gate, kind in zip(GATES[:4], _TYPES[:4], strict=True)
+    )
+    if not durable_complete:
+        reasons.append("durable_participant_revisions_unproven")
+    resources = {
+        p.runtime.resource
+        for p in evidence
+        if type(p) in _TYPES and p.runtime is not None
+    }
+    if len(resources) != 1:
+        reasons.append("runtime_epoch_conflict")
+    # Local epochs do not establish global ownership or resolve recovery.
     reasons.extend(
         (
-            "durable_participant_revisions_unproven",
             "ownership_epoch_unproven",
             "external_writers_unproven",
             "coordinated_resolution_unimplemented",
@@ -440,6 +542,8 @@ def request_current(hass, request: GateRequest) -> bool:
         and owner._request is request
         and owner.runtime_epoch == request.runtime_epoch
         and owner._generation == request.safety_generation
+        and request.boot_epoch == owner.source.pump.safety_snapshot().runtime.boot
+        and owner._revisions_current(request)
         and 0 <= (dt_util.utcnow() - request.captured_at).total_seconds() <= 30
     )
 
@@ -564,6 +668,27 @@ class _RecoveryGateCoordinator:
             self.scheduler.recovery_gate_evidence(request),
         )
 
+    def _revisions_current(self, request):
+        snapshots = self._observations()
+        ledger_revision = next(
+            (r for r in request.revisions if r.source == "ledger"), None
+        )
+        if ledger_revision != EvidenceRevision(
+            "ledger", _digest(_json(self.ledger.inspect())), self.ledger.revision
+        ):
+            return False
+        return all(
+            next((r for r in request.revisions if r.source == gate), None)
+            == evidence_revision(gate, snapshots[index])
+            for gate, index in (
+                ("pump", 0),
+                ("shots", 1),
+                ("accounting", 1),
+                ("cycle", 2),
+                ("scheduler", 3),
+            )
+        )
+
     def confirmation_current(self, result: ParticipantAggregation) -> bool:
         """Diagnostic identity/liveness check, never an authorization predicate."""
         if (
@@ -602,11 +727,7 @@ class _RecoveryGateCoordinator:
             before = await async_create_reconciliation_plan(self.ledger)
             snapshots = self._observations()
             revisions = tuple(
-                EvidenceRevision(
-                    gate,
-                    observation_digest(snapshots[index]),
-                    None if gate == "scheduler" else snapshots[index].version.revision,
-                )
+                evidence_revision(gate, snapshots[index])
                 for gate, index in (
                     ("pump", 0),
                     ("shots", 1),
@@ -640,6 +761,7 @@ class _RecoveryGateCoordinator:
                 self.runtime_epoch,
                 generation,
                 dt_util.utcnow(),
+                snapshots[0].runtime.boot,
             )
             self._request = request
             evidence = self._collect(request)

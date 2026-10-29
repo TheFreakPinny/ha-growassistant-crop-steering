@@ -34,6 +34,7 @@ from .recovery_participant import (
     request_current,
     scheduler_evidence,
 )
+from .recovery_revision import ParticipantRuntime
 from .recovery_snapshot import task_state
 from .shot_engine import (
     SIGNAL_SHOT_FINISHED,
@@ -122,6 +123,7 @@ class _NativeScheduler:
         self._observed_data: dict[str, Any] | None = None
         self._recovery_epoch = uuid4().hex
         self._completed_operation: str | None = None
+        self._runtime = ParticipantRuntime(hass, entry, coordinator.controller._runtime)
 
     def recovery_gate_snapshot(self) -> SchedulerObservation:
         """Local quiesce observation only; never stop, start or clear retry."""
@@ -137,6 +139,10 @@ class _NativeScheduler:
             self._generation,
             self._timer_revision,
             self.retry_blocked,
+            self._runtime.snapshot(
+                self.coordinator.safety_snapshot().binding.entity_id,
+                self._generation + self._timer_revision,
+            ),
         )
 
     def recovery_gate_evidence(self, request: GateRequest) -> SchedulerGateEvidence:
@@ -154,6 +160,7 @@ class _NativeScheduler:
 
     async def async_initialize(self) -> None:
         """Claim an internal harness owner; install nothing and execute nothing."""
+        self._runtime.start()
         owners = self.hass.data.setdefault(_KEY, {})
         if self._closed or self._initialized or self.entry.entry_id in owners:
             raise RuntimeError("Scheduler already initialized or closed")
@@ -379,6 +386,7 @@ class _NativeScheduler:
     async def async_close(self) -> None:
         """Close permanently; integration unload calls this before shot cleanup."""
         self._closed = True
+        self._runtime.close()
         try:
             await self.async_stop()
         finally:
