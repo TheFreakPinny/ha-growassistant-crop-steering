@@ -124,6 +124,7 @@ def _runtime(ledger):
             "scheduler": None
             if scheduler is None
             else {
+                "epochs": scheduler.recovery_gate_snapshot().runtime,
                 "running": scheduler.running,
                 "task": task_state(scheduler._task),
                 "generation": scheduler._generation,

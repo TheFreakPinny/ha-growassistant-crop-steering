@@ -183,7 +183,10 @@ Beleg gegen Payload und teilnehmerspezifischen Store-Key. Alle Snapshots sind
 rekursiv unveränderlich; ihre Erfassung startet keine IO oder Bewässerung.
 
 `SchedulerObservation` hat Schema 2 und die lokale Laufzeitbindung samt
-Admission-/Timer-Generation. `EvidenceRevision` für Scheduler besitzt ausdrücklich
+Admission-/Timer-Generation. Der Planer erfasst auch die typisierte
+Scheduler-Instanzepoche in seinem Runtime-Nachweis; der Runtime-Digest bindet
+sie in die bestehenden technischen Transaktionsreceipts ein.
+`EvidenceRevision` für Scheduler besitzt ausdrücklich
 **keine dauerhafte Revision und keinen Journalbeleg**. Lokale Ruhe und Generation
 ersetzen keinen globalen Quiesce-/Admission-Vertrag.
 
@@ -238,8 +241,8 @@ HA 2025.12.5, pytest 9.0.0 und Ruff 0.17.0, ohne konkurrierenden pytest-Prozess.
 
 | Prüfung | Ergebnis |
 | --- | --- |
-| Vollständige Native-Harness-Suite | **465 bestanden**, 74,79 s |
-| Gesamte pytest-Suite | **1.261 bestanden**, 129,82 s; keine Fehler/Skips |
+| Vollständige Native-Harness-Suite | **465 bestanden**, 73,29 s |
+| Gesamte pytest-Suite | **1.261 bestanden**, 125,60 s; keine Fehler/Skips |
 | Neue Revisions-/Epochenfälle | **54 neue Tests**; 1.207 + 54 = 1.261 und 411 + 54 = 465 |
 | Ruff (`custom_components tests scripts`) | Bestanden, Exit 0 |
 | Formatprüfung (`custom_components tests scripts`) | Bestanden, 61 Dateien, Exit 0 |

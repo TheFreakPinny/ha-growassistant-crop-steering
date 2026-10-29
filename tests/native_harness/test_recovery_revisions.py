@@ -384,6 +384,10 @@ async def test_disk_only_revision_change_is_detected_despite_identical_payload(
     metadata = simulation.records["_participant_envelopes"]["shots"]
     metadata["revision"] += 2
     plan = await async_create_reconciliation_plan(coordinator.ledger)
+    assert (
+        plan.evidence["runtime"]["scheduler"]["epochs"]["controller"]["value"]
+        == simulation.scheduler.recovery_gate_snapshot().runtime.controller.value
+    )
     assert "revision_conflict" in {f.code for f in plan.findings}
     result = await coordinator.async_check()
     assert not result.coordination_ready
