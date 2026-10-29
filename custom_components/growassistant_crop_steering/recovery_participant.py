@@ -25,6 +25,7 @@ from .recovery_snapshot import (
     validate_pump,
     validate_shots,
 )
+from .recovery_writer import WriterIsolationEvidence, WriterReason, _WriterObserver
 from .vwc import normalize_vwc_sensors
 
 Gate = Literal["pump", "shots", "accounting", "cycle", "scheduler"]
@@ -104,6 +105,7 @@ class ParticipantEvidence:
 class PumpGateEvidence(ParticipantEvidence):
     off_reported_at: datetime | None
     independent_off_confirmed: bool | None
+    writer_isolation: WriterIsolationEvidence | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -493,6 +495,19 @@ def aggregate_evidence(
                 proof.dispositions
             ):
                 reasons.append("operation_scope_conflict")
+        if isinstance(proof, PumpGateEvidence):
+            isolation = proof.writer_isolation
+            if isolation is None:
+                reasons.extend((WriterReason.VISIBILITY, WriterReason.UNPROVEN))
+            else:
+                reasons.extend(isolation.reasons)
+                if (
+                    isolation.binding != request.binding
+                    or isolation.runtime != proof.runtime
+                    or isolation.revisions != request.revisions
+                    or isolation.attempt_id != request.attempt_id
+                ):
+                    reasons.append(WriterReason.EPOCH)
         if not proof.participant_epoch or not proof.observed_digest:
             reasons.append("confirmation_invalid")
         reasons.extend(proof.blockers)
@@ -578,6 +593,7 @@ class _RecoveryGateCoordinator:
         self._last: ParticipantAggregation | None = None
         self._closed = False
         self._request: GateRequest | None = None
+        self._writers = _WriterObserver(self.source.pump, self.revoke)
         self._remove = [
             self.hass.bus.async_listen("state_changed", self._changed),
             self.hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, self._changed),
@@ -608,6 +624,7 @@ class _RecoveryGateCoordinator:
     def close(self) -> None:
         self.revoke("coordinator_closed")
         self._closed = True
+        self._writers.close()
         for remove in self._remove:
             remove()
         self._remove.clear()
@@ -654,14 +671,26 @@ class _RecoveryGateCoordinator:
                     "sensor_assessment": self.source.shots.sensor_assessment().diagnostic(),
                     "data": dict(self.source.shots.entry.data),
                     "generation": self._generation,
+                    "writer_monitor": (
+                        self._writers.monitor_id,
+                        self._writers.generation,
+                        self._writers.active,
+                    ),
                 }
             )
         )
 
     def _collect(self, request):
         shots, accounting = self.source.shots.recovery_gate_evidence(request)
+        pump = self.source.pump.recovery_gate_evidence(request)
+        isolation = self._writers.capture(request)
+        pump = replace(
+            pump,
+            writer_isolation=isolation,
+            blockers=tuple(dict.fromkeys((*pump.blockers, *isolation.reasons))),
+        )
         return (
-            self.source.pump.recovery_gate_evidence(request),
+            pump,
             shots,
             accounting,
             self.source.cycle.recovery_gate_evidence(request),
@@ -723,6 +752,7 @@ class _RecoveryGateCoordinator:
         request = None
         evidence = ()
         try:
+            writer_runtime = self.source.pump.safety_snapshot().runtime
             guard = self._guard()
             before = await async_create_reconciliation_plan(self.ledger)
             snapshots = self._observations()
@@ -768,6 +798,8 @@ class _RecoveryGateCoordinator:
             after = await async_create_reconciliation_plan(self.ledger)
             blockers = [f.code for f in before.findings] + list(before.open_checks)
             blockers += [f.code for f in after.findings] + list(after.open_checks)
+            if writer_runtime != self.source.pump.safety_snapshot().runtime:
+                blockers.append(WriterReason.EPOCH)
             # No await after final validation/publication. Recapture every owner
             # so ownership loss, local flags and pending work cannot be hidden.
             if (
@@ -793,6 +825,8 @@ class _RecoveryGateCoordinator:
             reasons = tuple(
                 dict.fromkeys(
                     (code,)
+                    + (WriterReason.VISIBILITY, WriterReason.UNPROVEN)
+                    + tuple(r for r in self._revocations if r in WriterReason)
                     + tuple(reason for proof in evidence for reason in proof.blockers)
                 )
             )
