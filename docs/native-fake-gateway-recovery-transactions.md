@@ -268,7 +268,8 @@ Python 3.13.16, HA 2025.12.5, HA-Fixtures 0.13.301 und Ruff 0.17.0.
 | Formatprüfung | Bestanden, 72 Dateien |
 | Python-Kompilierung | Bestanden (`custom_components`, `tests`, `scripts`) |
 | Git-Whitespace-Prüfung | Bestanden, einschließlich neu hinzugefügter Tests |
-| HACS / Hassfest | Bestehende GitHub-Actions-Workflows am PR; Ergebnis wird nachgetragen |
+| HACS | [Bestanden](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40968790327) |
+| Hassfest | [Bestanden](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40968790232) |
 
 Der erste vollständige Lauf bei paralleler Suite hatte einen bestehenden
 Shot-Engine-Fehler `deadline_exceeded` (1.701 bestanden, ein Fehler in
@@ -276,3 +277,6 @@ Shot-Engine-Fehler `deadline_exceeded` (1.701 bestanden, ein Fehler in
 bestand isoliert; der abschließende vollständige Lauf ohne parallele Tests
 bestand vollständig. Die bestehenden Timeout-Grenzen und die produktive
 Shot-/Pumpenlogik wurden dafür nicht verändert.
+
+Die verlinkten HACS-/Hassfest-Läufe validieren Implementierungscommit `174a5de`;
+der anschließende Dokumentationscommit ergänzt ausschließlich diese Ergebnisse.
