@@ -201,13 +201,15 @@ Repository-Pin 2025.12.5. Alle pytest-Läufe erfolgen sequenziell mit
 | Prüfung | Ergebnis |
 | --- | --- |
 | Neue Fake-Gateway-Tests | **54 bestanden**, 0,56 s |
-| Vollständige pytest-Suite | Vor aktorweiter Stop-Ergänzung: **1.405 bestanden**, 130,69 s; finaler Lauf folgt |
-| Native-Harness | Vor aktorweiter Stop-Ergänzung: **609 bestanden**, 78,48 s; finaler Lauf folgt |
+| Vollständige pytest-Suite | **1.406 bestanden**, 129,52 s; keine Fehler/Skips |
+| Native-Harness | **610 bestanden**, 78,47 s; separater abschließender Lauf |
+| [GitHub-CI](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40945672228) | Bestanden auf Code-Commit `954447c` |
 | Ruff | Bestanden |
 | Formatprüfung | Bestanden, 67 Dateien |
 | Python-Kompilierung | Bestanden |
 | Git-Whitespace-Prüfung einschließlich neuer Dateien | Bestanden (`git diff --cached --check`) |
-| HACS / Hassfest | Ergebnisse der unveränderten PR-Workflows folgen |
+| [HACS](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40945672199) | Bestanden auf Code-Commit `954447c` |
+| [Hassfest](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/40945672177) | Bestanden auf demselben Code-Commit |
 
 Gesamt: **1.352 Baseline + 54 neue Tests = 1.406**. Native-Harness:
 **556 + 54 = 610**. Der erste separate Harness-Lauf hatte 608 Erfolge und einen
@@ -215,3 +217,9 @@ Timeout im bestehenden Test `test_scheduler_p0_p1_p2_p3_with_independent_budgets
 (dessen Drei-Sekunden-Wartefrist auf den P3-Zähler). In der nachfolgenden
 vollständigen Suite bestand dieser Test unverändert. Keine bestehenden Fristen,
 Sicherheitsassertions oder Produktivfunktionen wurden dafür angepasst.
+
+Die abschließenden gezielten und breiten Läufe prüfen auch das aktorweite Fencing
+verspäteter Sicherheits-OFFs nach einem Restart. [PR #102](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/pull/102)
+zielt auf `main` und wird nicht automatisch gemergt. Der abschließende
+Dokumentationscommit ändert keinen Code; die unveränderten PR-Workflows laufen
+auch auf diesem Stand erneut.
