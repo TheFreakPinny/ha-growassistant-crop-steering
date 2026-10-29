@@ -386,3 +386,26 @@ async def test_heartbeat_does_not_extend_lease(model):
     clock.advance(2)
     gateway.poll()
     assert gateway.state == "off" and gateway.stopped
+
+
+async def test_late_old_gateway_off_invalidates_new_gateway_pending_on(model):
+    old, clock, store, intent = model
+    current = FakeGateway(old.actuator, clock, store)
+    assert current.recheck()
+    lease = current.grant("new", BootEpoch("new-ha"), 8)
+    command = replace(
+        intent,
+        command_id="new-command",
+        ha_boot=lease.ha_boot,
+        token=FencingToken(lease.lease_id, lease.epoch, lease.owner_id),
+    )
+    assert current.accept(command).status == "accepted"
+    barrier = Barrier()
+    task = asyncio.create_task(current.execute(command, before_apply=barrier.wait))
+    await barrier.entered.wait()
+    # Even a delayed safety request from the old instance is actuator-wide.
+    old.safety_off("late_old_off")
+    barrier.release.set()
+    assert (await task).status == "rejected"
+    assert current.stopped and current.lease is None
+    assert "on" not in current.events

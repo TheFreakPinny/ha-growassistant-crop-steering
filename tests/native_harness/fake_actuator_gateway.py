@@ -58,6 +58,7 @@ class FakePersistence:
     """
 
     _actor: _FakeActuator = field(default_factory=lambda: _FakeActuator(), init=False)
+    stop_serial: int = 0
     runtime: int = 0
     boot: int = 0
     generation: int = 0
@@ -126,6 +127,7 @@ class FakeGateway:
         self._actor = persistence._actor
         persistence.runtime += 1
         self._runtime = persistence.runtime
+        self._stop_serial = persistence.stop_serial
         self._lock = asyncio.Lock()
         self._lease: OwnershipLease | None = None
         self._last_sequence = 0
@@ -179,6 +181,8 @@ class FakeGateway:
 
     def safety_off(self, reason: str) -> bool:
         """Latch before any output attempt. No lease, lock or persistence needed."""
+        self.store.stop_serial += 1
+        self._stop_serial = self.store.stop_serial
         self.stopped = True
         self._lease = None
         confirmed = self._actor.off()
@@ -202,6 +206,7 @@ class FakeGateway:
         self._last_tick = now
         if (
             not self._current()
+            or self._stop_serial != self.store.stop_serial
             or now - self._heartbeat >= self._watchdog_timeout
             or self.state == "unknown"
             or (self._lease is not None and now >= self._lease.expires_tick)

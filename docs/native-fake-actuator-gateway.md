@@ -157,6 +157,9 @@ Fake kann keine Exactly-once-Wasserlieferung beweisen; Unsicherheit bleibt gespe
 OFF-Versuch. Er benötigt weder normale ON-Lease noch Ausführungslock noch
 funktionierende Persistenz. Eine wartende ON-Ausführung kann deshalb nach ihrer
 Barriere nicht mehr durchlaufen. Eine neue Lease wird niemals durch OFF erteilt.
+Eine gemeinsame aktorweite Stop-Generation invalidiert auch ausstehende Arbeit
+einer neueren Gateway-Instanz, wenn ein verspätetes Sicherheits-OFF der alten
+Instanz eintrifft. Die neue Instanz muss ebenfalls erneut prüfen und erteilen.
 Die Stop-Wirkung ist keine gewöhnliche Position in einer normalen Queue.
 
 `poll()` simuliert den Watchdog deterministisch. Die Tests bewegen die Fake-Uhr
@@ -197,17 +200,17 @@ Repository-Pin 2025.12.5. Alle pytest-Läufe erfolgen sequenziell mit
 
 | Prüfung | Ergebnis |
 | --- | --- |
-| Neue Fake-Gateway-Tests | **53 bestanden**, 0,50 s |
-| Vollständige pytest-Suite | **1.405 bestanden**, 130,69 s; keine Fehler/Skips |
-| Native-Harness | **609 bestanden**, 78,48 s; separater abschließender Lauf |
+| Neue Fake-Gateway-Tests | **54 bestanden**, 0,56 s |
+| Vollständige pytest-Suite | Vor aktorweiter Stop-Ergänzung: **1.405 bestanden**, 130,69 s; finaler Lauf folgt |
+| Native-Harness | Vor aktorweiter Stop-Ergänzung: **609 bestanden**, 78,48 s; finaler Lauf folgt |
 | Ruff | Bestanden |
 | Formatprüfung | Bestanden, 67 Dateien |
 | Python-Kompilierung | Bestanden |
 | Git-Whitespace-Prüfung einschließlich neuer Dateien | Bestanden (`git diff --cached --check`) |
 | HACS / Hassfest | Ergebnisse der unveränderten PR-Workflows folgen |
 
-Gesamt: **1.352 Baseline + 53 neue Tests = 1.405**. Native-Harness:
-**556 + 53 = 609**. Der erste separate Harness-Lauf hatte 608 Erfolge und einen
+Gesamt: **1.352 Baseline + 54 neue Tests = 1.406**. Native-Harness:
+**556 + 54 = 610**. Der erste separate Harness-Lauf hatte 608 Erfolge und einen
 Timeout im bestehenden Test `test_scheduler_p0_p1_p2_p3_with_independent_budgets`
 (dessen Drei-Sekunden-Wartefrist auf den P3-Zähler). In der nachfolgenden
 vollständigen Suite bestand dieser Test unverändert. Keine bestehenden Fristen,
