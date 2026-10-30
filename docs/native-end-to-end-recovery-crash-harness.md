@@ -239,5 +239,27 @@ HA-Fixtures 0.13.301 und Ruff 0.17.0.
 | Audit-Witness-Verlust | 1 |
 | **Gesamt** | **99** |
 
-Die abschließenden Laufresultate und HACS-/Hassfest-Nachweise werden nach der
-Validierung hier ergänzt.
+| Prüfung | Ergebnis |
+| --- | --- |
+| Neue End-to-End-Tests, abschließender Lauf | 99 bestanden (24,26 s) |
+| Gesamte Native-Harness-Suite | 1.005 bestanden (166,55 s); danach erneuter Lauf aller 99 End-to-End-Fälle nach Präzisierung der Erfassungs-/Restart-Grenzen |
+| Vollständige pytest-Suite am finalen Python-Stand | 1.801 bestanden (219,47 s), keine Fehler/Skips |
+| Bekannter Deadline-Test zusätzlich isoliert | 1 bestanden (1,31 s) |
+| Profilierter normaler End-to-End-Durchlauf | 1 bestanden (1,64 s) |
+| Ruff | Bestanden, Exit 0 |
+| Formatprüfung | Bestanden, 74 Dateien, Exit 0 |
+| Python-Kompilierung | Bestanden (`custom_components`, `tests`, `scripts`), Exit 0 |
+| Git-Whitespace-Prüfung | Bestanden, Exit 0 |
+| HACS am Implementierungscommit `0f882b3` | [Bestanden](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/41029786902) |
+| Hassfest am Implementierungscommit `0f882b3` | [Bestanden](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/41029787093) |
+
+Der folgende Dokumentationscommit ergänzt ausschließlich diese Ergebnisse.
+Alle lokalen pytest-Prozesse liefen nacheinander. Im vollständigen und im
+isolierten Lauf trat der bekannte `deadline_exceeded`-Fehler nicht auf.
+Ein zusätzlicher cProfile-Lauf des normalen End-to-End-Falls maß für `record`
+26 Aufrufe mit insgesamt 0,121602 s einschließlich Unteraufrufen, im Mittel
+4,677 ms unter Profilierungsinstrumentierung. Das ist eine Beobachtung für die
+kleine Fixture-Historie, keine obere Latenzgrenze. Während dieser Aufnahmen läuft
+kein Shot; ein zusätzlicher Deadline-Konflikt durch diese Orchestrierung wurde
+nicht beobachtet. Die mögliche Scheduling-Race des bestehenden erfolgreichen
+Shot-Tests bleibt außerhalb dieser rein diagnostischen Implementierung.
