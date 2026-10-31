@@ -1052,6 +1052,9 @@ class _ShotCoordinator:
     async def _close(self) -> bool:
         if self._task is not None:
             await asyncio.shield(self._task)
+        if self._storage_task is not None and not self._storage_task.done():
+            await self.controller.async_stop()
+            return False
         stopped = await self.controller.async_close()
         if stopped:
             if self._remove_shutdown is not None:
