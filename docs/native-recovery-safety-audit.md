@@ -76,6 +76,26 @@ Ownerregistrierung und Busy-Flags können einem unabhängigen alten Prozess kein
 physische Schreibfähigkeit entziehen. Ein Coroutine-Cancel beendet keinen bereits
 laufenden Executorwrite oder zugestellten Gerätebefehl.
 
+## Explizite Annahmen des isolierten Modells
+
+- FakePump hat genau ein festes Ziel und kann nicht an HA-Services weiterleiten.
+  `_FakeActuator.on/off` ändern Modellzustand; Relaiskleben, Siphon und fremde
+  Geräteclients existieren dort nur, soweit ein Fall sie ausdrücklich injiziert.
+- Synchrone Gatewayaufnahmen sind innerhalb eines Event-Loop-Schritts atomar.
+  Reale parallele Threads, Gerätefirmware und Netzpakete teilen diese Grenze nicht.
+- MemoryStores kopieren Pythonwerte; getrennt erhaltene Witnessobjekte dienen als
+  unabhängige Referenz im Test. Reale unabhängige Fehlerdomänen und dauerhafte
+  Speicherung dieser Referenz werden dadurch nicht hergestellt.
+- FakeClock und Barrieren bestimmen ausgewählte Reihenfolgen. Gateway-Watchdog-
+  Prüfungen werden durch Modellaufrufe ausgeführt; ein autonomer Controller wird
+  nicht betrieben. Native-Pumpentimer verwenden daneben die reale Loopuhr.
+- Fixtures sind vertrauenswürdig, interne Dataclasses typisiert und Identitäten
+  prozesslokal. Es gibt weder einen Parser für untrusted Gatewaypakete noch
+  überprüfte Credentials, Signaturen oder eine reale HA-Releaseberechtigung.
+- Fault-Injection deckt die benannten Grenzen ab, keine erschöpfende Menge aller
+  möglichen Interleavings. Neustart bedeutet HA-/Controllerrekonstruktion im
+  Testprozess, keinen Stromausfall des Rechners oder Pumpenaktors.
+
 ## Belegte Antworten auf die Architekturfragen
 
 ### Ownership und Writer-Isolation
@@ -237,13 +257,15 @@ Tests: NRS-031, keine neuen Produktivdateien und keine Friständerung.
 
 | Prüfung | Ergebnis |
 | --- | --- |
+| Neue Audit-Guards separat (`pytest -q tests/native_harness/test_safety_audit_boundaries.py --tb=short`) | **2 bestanden**, 0,38 s |
 | Gesamte Native-Harness-Suite (`pytest -q tests/native_harness --tb=short`) | **1.007 bestanden**, 162,46 s, einschließlich beider neuer Guards |
-| Vollständige pytest-Suite | Läuft; Ergebnis wird vor Abschluss ergänzt |
+| Vollständige pytest-Suite (`pytest -q --tb=short`) | **1.803 bestanden**, 212,89 s; keine Fehler/Skips |
 | Ruff (`ruff check custom_components tests scripts`) | Bestanden |
 | Format (`ruff format --check custom_components tests scripts`) | Bestanden, 75 Dateien |
 | Kompilierung (`compileall -q custom_components tests scripts`) | Bestanden |
-| Git-Whitespace | Wird am finalen Diff erneut geprüft |
-| HACS / Hassfest | Werden über die unveränderten PR-Workflows ausgeführt; Links folgen |
+| Git-Whitespace (`git diff origin/main --check`, einschließlich neuer Dateien im Commit) | Bestanden |
+| [HACS](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/41185889208) | Bestanden am Implementierungscommit `5c5efb5` |
+| [Hassfest](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/actions/runs/41185889338) | Bestanden am selben Commit |
 
 Alle pytest-Läufe laufen nacheinander, nicht unter konkurrierender Testlast.
 Die anfängliche Umgebung enthielt die HA-Testfixture/Supporting Dependencies
@@ -258,3 +280,7 @@ Keine dieser Einrichtungs-/Testkorrekturen verändert produktive Sicherheitslogi
 35 primäre Testanker und die Links wurden zusätzlich auf Existenz geprüft.
 Die Dokumente beschreiben keine automatisch gemessene Codecoverage und keine
 allgemeine Sicherheitsfreigabe.
+
+Die folgenden Dokumentationspräzisierungen und Ergebnisnachträge verändern keine
+Pythondatei gegenüber `5c5efb5`. Die unveränderten PR-Workflows laufen auch auf
+dem abschließenden Dokumentationscommit; PR: [#108](https://github.com/TheFreakPinny/ha-growassistant-crop-steering/pull/108).
