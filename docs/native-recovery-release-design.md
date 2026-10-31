@@ -7,6 +7,14 @@ Der [Recovery-Review](native-recovery-release-review.md) dokumentiert die
 bestehenden Sperren und 841 bestandene Tests. Diese Zahl ist dessen Befund,
 kein neuer Testlauf dieses Dokumentations-PRs.
 
+## Sicherheitsinventur nach PR #107
+Der aktuelle anforderungsbezogene Stand steht im
+[Native-Recovery-Sicherheitsaudit](native-recovery-safety-audit.md), mit
+[Coverage-Matrix](native-recovery-safety-coverage.md) und
+[priorisiertem Gap-Backlog](native-recovery-gap-backlog.md).
+Designziele oder positive Fake-Protokollfälle sind keine Produktivnachweise;
+die bestehenden Aktivierungs- und Release-Sperren bleiben unverändert.
+
 ## 1. Zweck, Begriffe und Grenzen
 
 Das Verfahren soll einen konkreten Fehler nachvollziehbar bearbeiten und einen
