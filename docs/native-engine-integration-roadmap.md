@@ -36,6 +36,37 @@ Controller noch Native-Timer oder Pumpenservice. Scheduler bleibt gestoppt.
 wiederholtes Close/Cancel, aktiver Shot beim Unload, fehlgeschlagenes OFF,
 Ownerfreigabe erst nach bestätigtem Close; bestehende Audit-Guards unverändert.
 
+### R1 umgesetzt — Native Runtime & Lifecycle Composition
+
+`NativeRuntime` in `native_runtime.py` bindet einen explizit injizierten,
+simulierten `PumpController` sowie die realen `_ShotCoordinator`,
+`_NativeCycleController` und `_NativeScheduler` an `ConfigEntry.runtime_data`.
+`async_initialize()` baut Pump → Shots → Cycle → Scheduler auf, ohne
+`async_start()`, Timer, Evaluation oder Reservation. Die vorhandenen
+Controllerowner bleiben maßgeblich; es gibt keine zusätzliche Registry.
+Normales `async_setup_entry` bleibt rein diagnostisch/Legacy und lehnt eine
+noch nicht beendete Runtime ab. Integrationstests legen den Container explizit an.
+
+Die Lifecyclezustände sind CREATED, INITIALIZING, READY_STOPPED, STOPPING,
+BLOCKED und CLOSED; RUNNING ist reserviert und hat in R1 keinen Startpfad.
+READY_STOPPED beschreibt vorbereitete Controller, keine Bewässerungsfreigabe:
+Recovery-, Cycle- und Ownershipgates bleiben unverändert. Fehlerinitialisierung
+rollt auch eine teilweise erworbene Stufe rückwärts zurück. `async_close()`
+ist serialisiert, gegen Caller-Cancellation geschützt und nach sauberem Abschluss
+idempotent. `async_unload_entry` schließt den Container vor den Plattformen;
+bestehende einzelne Controller-Unloadhooks bleiben für Harnessnutzer erhalten.
+Unbestätigtes OFF und offene Service-/Cycle-/Shot-Schreibarbeit verhindern einen
+bestätigten Abschluss beziehungsweise eine neue Runtime. BLOCKED und `error`
+machen unvollständigen Shutdown sichtbar. Es gibt keine automatische Wiederholung
+der Initialisierung oder Freigabe von Recovery-Latches.
+
+R2 muss weiterhin Konfiguration und ownerabhängiges Service-/Resetrouting
+verbinden, Native-Sunrise und Legacy-Tagesreset gegeneinander ausschließen,
+Parameter einschließlich Pumpenlimit validieren und Änderungen an Pumpe,
+Sensoren und Zeitplan kontrolliert invalidieren. R1 aktiviert weder Native im
+Produkt noch einen Blueprintwechsel, öffentliche Startservices oder neue
+Bewässerungsregeln. Die Simulationsevidenz ist ausschließlich eine Testgrenze.
+
 ## R2 — Konfiguration und Steuerungsverantwortung verbinden (P0)
 
 **Ziel:** Genau ein lokaler Executor und ein Resetowner; vorhandene Parameter

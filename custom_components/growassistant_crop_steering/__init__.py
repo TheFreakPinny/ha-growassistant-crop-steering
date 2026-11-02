@@ -49,6 +49,7 @@ from .const import (
 )
 from .cycle import _async_unload_cycle
 from .native_diagnostics import DATA_DIAGNOSTICS, NativeDiagnosticsCoordinator
+from .native_runtime import NativeRuntimeState, native_runtime
 from .pump import async_unload_controller
 from .scheduler import _async_unload_scheduler
 from .shot_engine import _async_unload_shots, _cycle_reset_started
@@ -165,6 +166,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up GrowAssistant Crop Steering from a config entry."""
+    runtime = native_runtime(entry)
+    if runtime is not None and runtime.state != NativeRuntimeState.CLOSED:
+        return False
     diagnostics = NativeDiagnosticsCoordinator(hass, entry)
     diagnostic_entries = hass.data.setdefault(DOMAIN, {}).setdefault(
         DATA_DIAGNOSTICS, {}
@@ -195,12 +199,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a GrowAssistant Crop Steering config entry."""
-    await _async_unload_scheduler(hass, entry)
-    await _async_unload_cycle(hass, entry)
-    if not await _async_unload_shots(hass, entry):
-        return False
-    if not await async_unload_controller(hass, entry):
-        return False
+    runtime = native_runtime(entry)
+    if runtime is not None:
+        if not await runtime.async_close():
+            return False
+    else:
+        await _async_unload_scheduler(hass, entry)
+        await _async_unload_cycle(hass, entry)
+        if not await _async_unload_shots(hass, entry):
+            return False
+        if not await async_unload_controller(hass, entry):
+            return False
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         diagnostics = (
