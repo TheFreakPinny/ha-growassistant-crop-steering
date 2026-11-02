@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, time, timedelta
+from functools import wraps
 from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, Platform
 from homeassistant.core import Event, HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -50,7 +52,8 @@ from .const import (
 from .cycle import _async_unload_cycle
 from .native_diagnostics import DATA_DIAGNOSTICS, NativeDiagnosticsCoordinator
 from .native_runtime import NativeRuntimeState, native_runtime
-from .pump import async_unload_controller
+from .ownership_routing import ControlRoute, control_route, require_legacy
+from .pump import _OWNER_KEY, async_unload_controller
 from .scheduler import _async_unload_scheduler
 from .shot_engine import _async_unload_shots, _cycle_reset_started
 from .vwc import calculate_vwc_state
@@ -283,6 +286,8 @@ class _CycleResetCoordinator:
         """Apply new light times without redefining an already-reset grow day."""
         now = now or dt_util.now()
         async with self._lock:
+            if control_route(self.entry) != ControlRoute.LEGACY:
+                return
             old_cycle = _light_cycle_start(now, self._sunrise, self._sunset)
             sunrise_entity = configured_entity_value(self.entry, CONF_LED_SUNRISE)
             sunset_entity = configured_entity_value(self.entry, CONF_LED_SUNSET)
@@ -339,6 +344,8 @@ class _CycleResetCoordinator:
     async def async_check(self, now: datetime | None = None) -> bool:
         """Reset once if a not-yet-recorded light cycle is currently active."""
         async with self._lock:
+            if control_route(self.entry) != ControlRoute.LEGACY:
+                return False
             cycle_start = _current_light_cycle_start(self.hass, self.entry, now)
             if cycle_start is None:
                 return False
@@ -425,6 +432,88 @@ def _entries_for_service(
     return entries
 
 
+def _routed_action(action):
+    def decorate(method):
+        @wraps(method)
+        async def routed(hass, entry, *args, **kwargs):
+            runtime = native_runtime(entry)
+            pump_owner = hass.data.get(_OWNER_KEY)
+            if (
+                pump_owner is not None
+                and pump_owner.entry is not entry
+                and configured_entity_value(entry, CONF_PUMP_SWITCH)
+                in (
+                    configured_entity_value(pump_owner.entry, CONF_PUMP_SWITCH),
+                    pump_owner.ownership.pump_entity if pump_owner.ownership else None,
+                )
+            ):
+                if action == "stop":
+                    owner_runtime = native_runtime(pump_owner.entry)
+                    if owner_runtime is not None:
+                        return await routed(hass, pump_owner.entry, *args, **kwargs)
+                    await pump_owner.async_stop()
+                    return None
+                raise HomeAssistantError(
+                    f"{action} blocked: pump resource has another native owner"
+                )
+            if runtime is not None and action != "stop":
+                await runtime._options_changed(hass, entry)
+            route = control_route(entry)
+            if (
+                action == "stop"
+                and runtime is not None
+                and route != ControlRoute.LEGACY
+            ):
+                await runtime._async_stop_for_review("service_stop_requires_review")
+                return None
+            if route != ControlRoute.LEGACY:
+                if route == ControlRoute.NATIVE_SIMULATED and action in {
+                    "start_p1",
+                    "complete_p1",
+                }:
+                    native_action = (
+                        runtime.cycle.async_manual_start
+                        if action == "start_p1"
+                        else runtime.cycle.async_manual_complete
+                    )
+                    if await native_action():
+                        return True
+                    reason = runtime.cycle.recovery_reason
+                    if runtime.cycle.record is None:
+                        reason = "native_cycle_boundary_required"
+                    elif runtime.shots.execution_active:
+                        reason = "native_operation_in_progress"
+                    reason = reason or (
+                        f"manual preconditions not met: phase={runtime.cycle.phase}, "
+                        f"p1_mode={configured_entity_value(entry, 'p1_mode')}, "
+                        f"state={runtime.cycle.record['values']}"
+                    )
+                    raise HomeAssistantError(f"{action} blocked: {reason}")
+                require_legacy(
+                    entry,
+                    f"{action}: legacy mutation has no safe native mapping",
+                )
+            pending = hass.data.setdefault(f"{DOMAIN}.legacy_actions", {})
+            pending[entry.entry_id] = pending.get(entry.entry_id, 0) + 1
+            completed = False
+            try:
+                result = await method(hass, entry, *args, **kwargs)
+                completed = True
+                return result
+            finally:
+                # A cancelled/failed helper sequence may have left partial or late
+                # work. Keep the transfer barrier until an explicit future review.
+                if completed:
+                    pending[entry.entry_id] -= 1
+                if not pending[entry.entry_id]:
+                    pending.pop(entry.entry_id)
+
+        return routed
+
+    return decorate
+
+
+@_routed_action("reset_cycle")
 async def _reset_cycle_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reset daily/cycle helper state for one config entry without touching the pump."""
     async with _cycle_reset_started(hass, entry):
@@ -479,6 +568,7 @@ async def _reset_shots_done_counter(
     )
 
 
+@_routed_action("start_p1")
 async def _start_p1_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Set P1 state flags for one config entry without starting the pump."""
     await _set_boolean_state(hass, entry, CONF_P1_ACTIVE, True)
@@ -492,6 +582,7 @@ async def _start_p1_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     )
 
 
+@_routed_action("complete_p1")
 async def _complete_p1_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Capture current VWC and atomically order the managed P1 completion state."""
     vwc_state = calculate_vwc_state(
@@ -555,6 +646,7 @@ async def _set_boolean_state(
     )
 
 
+@_routed_action("stop")
 async def _stop_pump_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Turn off the configured pump switch or input_boolean for one config entry."""
     await _call_helper_service(
@@ -608,6 +700,7 @@ async def _set_last_shot_before_soak(hass: HomeAssistant, entry: ConfigEntry) ->
     await _set_last_shot_for_entry(hass, entry, last_shot)
 
 
+@_routed_action("set_last_shot")
 async def _set_last_shot_for_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -648,6 +741,7 @@ async def _set_last_shot_for_entry(
     )
 
 
+@_routed_action("clear_last_shot")
 async def _clear_last_shot_for_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Clear the managed last-shot timestamp without requiring legacy helpers."""
     options = dict(entry.options)
