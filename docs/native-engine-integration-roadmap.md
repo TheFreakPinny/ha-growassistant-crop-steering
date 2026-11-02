@@ -93,6 +93,54 @@ Kein produktiver Native-Schalter im Flow.
 gegen Parameteränderung, Ownerkonflikt, Native- versus Legacyreset, Serviceaufruf
 während Accounting, verspäteter alter Callback und Pumpen-Neuzuordnung.
 
+### R2 implementiert — ausschließlich injizierte Simulation
+
+- `ControlRoute` beschreibt entrybezogen `LEGACY`, `NATIVE_SIMULATED` oder
+  `BLOCKED`. Normales Setup bleibt Legacy. Erst ein ausdrücklich injizierter,
+  initialisierter Simulationsstack übernimmt das lokale Routing. Dies bescheinigt
+  keine Exklusivität gegenüber Blueprint, externen Writern oder Hardware.
+  Die bestehende `PumpController`-Ownership bleibt maßgeblich; unvollständiges
+  Close hält den Runtime-Slot blockiert und verhindert Ersatz durch Reload.
+- `validated_configuration` prüft den unveränderten `capture_inputs`-Resolver:
+  Options vor Data (auch leere optionale Overrides), vorhandene Helperwerte und
+  `NUMERIC_SETTING_DESCRIPTIONS` als einzige Parameter-/Defaultquelle. Ungültige
+  explizite Werte werden diagnostiziert statt ersetzt. Domains folgen den
+  bestehenden Flow-Selektoren; Dauer > 0 und höchstens 300 s, numerische Grenzen,
+  VWC-/P1-Konsistenz, P3-Traypflicht und geordnete Licht-/Phasenfenster werden vor
+  Initialisierung geprüft. Cap und FC bleiben eigenständige vorhandene Grenzen.
+  Die unveränderte Native-Sensorpolicy bleibt 300 s, mindestens 1 und 100 % der
+  Sensoren, maximal 10 Prozentpunkte Spread; diese Readiness ist keine Freigabe.
+- Der Legacy-Tagesreset prüft seine Zuständigkeit unter seinem vorhandenen Lock,
+  auch bei verspäteten Callbacks. Im Native-Modus darf nur der Cycle-Controller
+  seine Sunrise-/Accounting-Transitions durchführen. Der öffentliche Resetservice
+  bleibt dort gesperrt: kein sicheres beliebiges Resetmapping vorhanden. Laufende
+  Legacy-Services oder Resets verhindern die Übernahme; keine automatische
+  Zählerübernahme und kein Nullreset zur Erzeugung einer Native-Baseline.
+- Start/Complete-P1 verwenden ausschließlich die vorhandenen manuellen
+  Cycle-Methoden und deren Gates. Ablehnung liefert einen konkreten Servicefehler.
+  Last-Shot setzen/löschen und direkte Counter-/Referenz-/Flagänderungen über
+  Number/Switch sind unter Native-Ownership gesperrt. Stop invalidiert Entscheidungen,
+  stoppt den Scheduler und erreicht den bestehenden Pumpen-OFF-Pfad auch bei
+  `BLOCKED`; kein direkter ON-Service. Legacy-Aufrufe bleiben unverändert.
+- Pumpen-, VWC-/Drain-/Tray-, Lichthelper-/Zeitplan-, Modus- und Phasenfensterwechsel
+  invalidieren die aktuelle Berechtigung, unterbrechen die Reservation und stoppen
+  kontrolliert am ursprünglichen Pumpenziel. Auch gleiche Werte einer anderen
+  Entity gelten als Neuzuordnung. Parameteränderungen während einer Reservation
+  oder ungültige/unklare Konfiguration blockieren konservativ. Gültige andere
+  Parameteränderungen ohne Reservation aktualisieren den Snapshot in derselben
+  Runtime und invalidieren alte Entscheidungen; keine Controller-Neukonstruktion,
+  kein automatischer Evaluationsrequest. Änderungen von Helperzuständen und
+  Entry-Optionen werden beobachtet; Native-Accounting ist keine Parameteränderung.
+- Weiterhin fehlen produktive Aktivierung, öffentlicher Native-Start,
+  automatischer Schedulerstart und positive Recoveryfreigabe. Keine Ersatzshots,
+  keine Umschreibung historischer Native-Daten und keine neuen realen ON-Pfade.
+  R3 muss konkrete Blueprint-/Helper-/Writerabweichungen, Checkpoints, Last-Shot/
+  Soak und eine saubere Übergabegrenze read-only vergleichen. Eine lokale
+  Routingentscheidung ersetzt weder Migration noch die spätere Reviewfreigabe.
+
+Gezielte R2-Nachweise stehen in `tests/lifecycle/test_native_routing.py`; die
+R1-Lifecyclefälle prüfen weiterhin Ownererhalt, fehlgeschlagenes OFF und Reload.
+
 ## R3 — Migration als konkrete Zustandsprüfung vorbereiten (P0)
 
 **Ziel:** Eine prüfbare Übergabe statt ungeprüfter Übernahme von Helperwerten.

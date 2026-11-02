@@ -47,6 +47,7 @@ class _ConfigEntries:
 
 def _make_hass(values: dict[str, str]) -> SimpleNamespace:
     return SimpleNamespace(
+        data={},
         states=_States(values),
         config_entries=_ConfigEntries(),
         services=SimpleNamespace(async_call=AsyncMock()),

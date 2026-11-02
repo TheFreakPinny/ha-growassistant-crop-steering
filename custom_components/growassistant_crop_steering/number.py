@@ -106,6 +106,13 @@ class GrowAssistantSettingNumber(NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Persist an updated numeric setting value in config entry options."""
+        from .ownership_routing import require_legacy
+
+        if (
+            self._setting_description.key.endswith("shots_done")
+            or self._setting_description.key == "p2_ref_vwc"
+        ):
+            require_legacy(self._entry, "Manual cycle accounting edit")
         options = dict(self._entry.options)
         options[self._setting_description.key] = value
         self.hass.config_entries.async_update_entry(self._entry, options=options)

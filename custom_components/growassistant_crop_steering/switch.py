@@ -100,6 +100,10 @@ class GrowAssistantStateSwitch(SwitchEntity):
 
     def _set_state(self, value: bool) -> None:
         """Persist an updated state flag value in config entry options."""
+        from .ownership_routing import require_legacy
+
+        if self._state_description.key != "p3_emergency_enabled":
+            require_legacy(self._entry, "Manual cycle flag edit")
         options = dict(self._entry.options)
         options[self._state_description.key] = value
         self.hass.config_entries.async_update_entry(self._entry, options=options)
